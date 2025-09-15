@@ -70,6 +70,8 @@
         .fiber-view { align-items: center; justify-content: space-between; height: 100%; padding: 2% 0; gap: 12px; }
         .media-converter { background: #e0e7ff; border: 1px solid #a5b4fc; padding: 8px; border-radius: 8px; text-align: center; font-size: 12px; position: relative; }
         .media-converter.active { border-color: var(--accent); box-shadow: var(--glow); }
+        .breakout { background: #ecfccb; border: 1px solid #a3e635; padding: 8px; border-radius: 8px; text-align: center; font-size: 12px; position: relative; }
+        .breakout .pinlist { background:#f0fdf4; border:1px dashed #a7f3d0; border-radius:6px; padding:6px; margin-top:4px; font-size:10px; text-align:left; }
         .sfp-slot { background: #4b5563; color: white; padding: 4px 6px; margin-top: 4px; border-radius: 4px; font-size: 10px; }
         .fiber-cable { flex-grow: 1; height: 4px; background: #facc15; margin: 0 10px; position: relative; }
         .copper-jumper { width: 10%; height: 4px; background: var(--cable); }
@@ -102,6 +104,41 @@
         .interface.tiny { height: 22px; font-size: 9px; }
         .light-pulse { position: absolute; width: 20px; height: 100%; background: white; border-radius: 99px; box-shadow: 0 0 8px white; opacity: 0; }
         @keyframes pulse-right { from { left: 0; opacity: 1; } to { left: calc(100% - 20px); opacity: 1; } }
+
+        /* Breakout Panel (under log) */
+        .breakout-panel { max-width: 1400px; margin: 1rem auto; background: var(--panel); border: 1px solid #d1d5db; border-radius: var(--radius); padding: 0.75rem; display: grid; grid-template-columns: 1.3fr 0.7fr 1.5fr; gap: 12px; }
+        .breakout-panel.hidden { display: none; }
+        .panel-box { border: 1px dashed #cbd5e1; border-radius: 8px; padding: 8px; background: #f8fafc; }
+        .panel-box h4 { margin: 0 0 6px; font-weight: 700; font-size: 12px; color: #334155; }
+        .pin-grid { display: grid; grid-template-columns: 1fr auto auto; gap: 4px 8px; font-size: 11px; font-family: 'Fira Code', monospace; }
+        .pin-row { display: contents; }
+        .pin-name { color: #334155; white-space: nowrap; }
+        .pin-idx { color: #64748b; }
+        .pin-val { text-align: right; color: #111827; }
+        .pin-highlight { background: #fef9c3; border-radius: 4px; padding: 0 4px; }
+        .i2c-log { height: 180px; overflow-y: auto; background: #0b1220; color: #cbd5e1; border-radius: 8px; padding: 8px; font-family: 'Fira Code', monospace; font-size: 11px; }
+        .i2c-log .ev { white-space: pre; }
+        .measure-guide { font-size: 12px; color: #334155; }
+        .badge { display: inline-block; padding: 1px 6px; border-radius: 999px; font-size: 10px; margin-left: 6px; }
+        .badge.ok { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+        .badge.warn { background: #fffbeb; color: #92400e; border: 1px solid #fde68a; }
+        .badge.bad { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+
+        /* Pin grid banks */
+        .pin-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .pin-bank { border: 1px solid #e2e8f0; border-radius: 6px; padding: 6px; background: #ffffff; }
+        .bank-title { font-size: 11px; font-weight: 700; color: #475569; margin-bottom: 6px; }
+        .pin-bank-grid { display: grid; grid-template-columns: auto 1fr auto; gap: 4px 8px; font-size: 11px; }
+
+        /* I2C scope */
+        .scope { background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 6px; }
+        .lane { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+        .lane-label { color: #cbd5e1; width: 32px; font-size: 10px; text-align: right; }
+        .wave { display: flex; height: 14px; align-items: stretch; gap: 2px; flex-wrap: nowrap; overflow: hidden; }
+        .seg { flex: 0 0 auto; height: 100%; min-width: 6px; border-radius: 2px; }
+        .seg.high { background: #22c55e; }
+        .seg.low { background: #ef4444; }
+        .seg.meta { background: #475569; }
 
     </style>
 </head>
@@ -141,6 +178,7 @@
                         <option value="direct_1000baseT">Direct 1Gbps Copper</option>
                         <option value="direct_100baseTX">Direct 100Mbps Copper</option>
                         <option value="fiber_1000baseSX">Fiber (1Gbps SX)</option>
+                        <option value="fiber_breakout">Fiber → SFP Breakout (Receive‑only)</option>
                     </select>
                 </div>
                 <div class="btns"><button id="prev">◀</button><button id="play">▶</button><button id="pause" disabled>⏸</button><button id="next">▶</button><button id="reset">↺</button></div>
@@ -247,7 +285,7 @@
         </div>
         <div id="fiber-view" class="hidden">
              <div class="cable-wrap">
-                <div class="port-row">HOST A ↔ Copper (4 pairs) ↔ Media Converter A ↔ SFP A ↔ Fiber ↔ SFP B ↔ Media Converter B ↔ Copper ↔ HOST B</div>
+                <div class="port-row" id="fiber-port-row">HOST A ↔ Copper (4 pairs) ↔ Media Converter A ↔ SFP A ↔ Fiber ↔ SFP B ↔ Media Converter B ↔ Copper ↔ HOST B</div>
                 <div class="cable fiber-view" id="fiber-animation-area">
                    <div class="copper-run" title="Patch cable from Host A to MC A">
                        <div class="mini-conductor mini-pin1"></div>
@@ -267,12 +305,15 @@
                    <div class="interface small" id="if_sfp_fiber_A"><div>Optical TX/RX</div><div class="detail"></div></div>
                    <div class="fiber-cable" id="fiber-segment"></div>
                    <div class="interface small" id="if_sfp_fiber_B"><div>Optical TX/RX</div><div class="detail"></div></div>
-                   <div class="media-converter" id="mcB">MC B
-                       <div class="interface tiny" id="if_mc_sfp_B"><div>20-pin SFP MSA</div><div class="detail"></div></div>
+                   <div class="breakout hidden" id="breakoutB">SFP Breakout (B)
                        <div class="sfp-slot" id="sfpB">SFP B</div>
-                       <div class="interface tiny" id="if_copper_mc_B"><div>Copper PHY</div><div class="detail"></div></div>
+                       <div class="pinlist" id="breakoutPins">
+                           <div><b>Power:</b> VCC 3.3V</div>
+                           <div><b>I2C:</b> SDA/SCL (idle ~3.3V)</div>
+                           <div><b>Status:</b> TX_DISABLE, TX_FAULT, RX_LOS</div>
+                       </div>
                    </div>
-                   <div class="copper-run" title="Patch cable from MC B to Host B">
+                   <div class="copper-run" id="copper-run-right" title="Patch cable from MC B to Host B">
                        <div class="mini-conductor mini-pin1"></div>
                        <div class="mini-conductor mini-pin2"></div>
                        <div class="mini-conductor mini-pin3"></div>
@@ -292,6 +333,23 @@
         <div id="simulation-log"></div>
     </div>
 
+    <!-- Breakout details panel (20-pin + I2C) -->
+    <div id="breakout-detail-panel" class="breakout-panel hidden">
+        <div class="panel-box" style="grid-column: span 1;">
+            <h4>Breakout: SFP 20-pin (MSA) Live Map <span id="breakout-status" class="badge warn">Idle</span></h4>
+            <div id="pin-grid" class="pin-grid"></div>
+        </div>
+        <div class="panel-box" style="grid-column: span 2;">
+            <h4>I2C Activity (SCL/SDA decode @ 100 kHz)</h4>
+            <div id="i2c-monitor" class="i2c-log"></div>
+            <div class="scope mt-2" id="i2c-scope">
+                <div class="lane"><div class="lane-label">SCL</div><div class="wave" id="scope-scl"></div></div>
+                <div class="lane"><div class="lane-label">SDA</div><div class="wave" id="scope-sda"></div></div>
+            </div>
+            <div id="measure-guide" class="measure-guide mt-2"></div>
+        </div>
+    </div>
+
 <script>
 // --- UTILS & DOM BINDINGS ---
 const $ = (s, p = document) => p.querySelector(s);
@@ -302,7 +360,9 @@ const dom = {
     directView: $('#direct-ethernet-view'), fiberView: $('#fiber-view'),
     cableArea: $('#cable-animation-area'), fiberArea: $('#fiber-animation-area'),
     playBtn: $('#play'), pauseBtn: $('#pause'), nextBtn: $('#next'), prevBtn: $('#prev'), resetBtn: $('#reset'),
-    hosts: { A: {}, B: {} }
+    hosts: { A: {}, B: {} },
+    // Breakout panel
+    breakoutPanel: $('#breakout-detail-panel'), pinGrid: $('#pin-grid'), i2cMonitor: $('#i2c-monitor'), measureGuide: $('#measure-guide'), breakoutStatus: $('#breakout-status')
 };
 ['A', 'B'].forEach(h => {
     const hostEl = $(`#host${h}`);
@@ -342,6 +402,138 @@ function animateVoltages(active = false) {
         wires.forEach(w => w.style.opacity = 0);
     }
 }
+
+// --- BREAKOUT HELPERS ---
+// SFP MSA pins grouped for readability
+const sfpPinsBanks = [
+    { title: 'Control / I2C / Status', pins: [
+        { idx: 2, name: 'TX_FAULT' },
+        { idx: 3, name: 'TX_DISABLE' },
+        { idx: 4, name: 'MOD_DEF2 (SDA)' },
+        { idx: 5, name: 'MOD_DEF1 (SCL)' },
+        { idx: 6, name: 'MOD_DEF0 (PRESENCE)' },
+        { idx: 7, name: 'RATE_SELECT' },
+        { idx: 8, name: 'RX_LOS' }
+    ]},
+    { title: 'Power / Grounds / High-speed', pins: [
+        { idx: 1, name: 'VeeT (TX GND)' },
+        { idx: 9, name: 'VeeR (RX GND)' },
+        { idx:10, name: 'VeeR (RX GND)' },
+        { idx:11, name: 'VeeR (RX GND)' },
+        { idx:14, name: 'VccR (3.3V)' },
+        { idx:15, name: 'VccT (3.3V)' },
+        { idx:16, name: 'VeeT (TX GND)' },
+        { idx:19, name: 'VeeT (TX GND)' },
+        { idx:20, name: 'VeeT (TX GND)' },
+        { idx:12, name: 'RD- (RX-)' },
+        { idx:13, name: 'RD+ (RX+)' },
+        { idx:17, name: 'TD- (TX-)' },
+        { idx:18, name: 'TD+ (TX+)' }
+    ]}
+];
+let pinIdxToEl = {};
+let pinIdxToVal = {};
+function initBreakoutPinGrid() {
+    if (!dom.pinGrid) return;
+    dom.pinGrid.innerHTML = '';
+    pinIdxToEl = {}; pinIdxToVal = {};
+    sfpPinsBanks.forEach(bank => {
+        const bankEl = document.createElement('div'); bankEl.className = 'pin-bank';
+        const title = document.createElement('div'); title.className = 'bank-title'; title.textContent = bank.title;
+        const grid = document.createElement('div'); grid.className = 'pin-bank-grid';
+        bank.pins.forEach(p => {
+            const idx = document.createElement('div'); idx.className = 'pin-idx'; idx.textContent = `#${p.idx}`;
+            const name = document.createElement('div'); name.className = 'pin-name'; name.textContent = `${p.name}`;
+            const val = document.createElement('div'); val.className = 'pin-val'; val.textContent = '—';
+            grid.appendChild(idx); grid.appendChild(name); grid.appendChild(val);
+            pinIdxToEl[p.idx] = { nameEl: name, valEl: val };
+            pinIdxToVal[p.idx] = null;
+        });
+        bankEl.appendChild(title); bankEl.appendChild(grid);
+        dom.pinGrid.appendChild(bankEl);
+    });
+}
+function setPinVoltage(pinNumber, voltageV, label = '') {
+    const rec = pinIdxToEl[pinNumber]; if (!rec) return;
+    const vStr = (voltageV === null || voltageV === undefined) ? '—' : `${voltageV.toFixed(2)} V`;
+    rec.valEl.innerHTML = label ? `${vStr} ${label}` : vStr;
+    rec.valEl.classList.add('pin-highlight');
+    setTimeout(() => rec.valEl.classList.remove('pin-highlight'), 600);
+    pinIdxToVal[pinNumber] = voltageV;
+}
+function setPinDigital(pinNumber, high, label = '') {
+    setPinVoltage(pinNumber, high ? 3.3 : 0.0, label || (high ? '(HIGH)' : '(LOW)'));
+}
+function setBreakoutStatus(text, cls = 'warn') {
+    if (!dom.breakoutStatus) return; dom.breakoutStatus.textContent = text; dom.breakoutStatus.className = `badge ${cls}`;
+}
+function clearI2C() { if (dom.i2cMonitor) dom.i2cMonitor.innerHTML = ''; }
+function appendI2C(text) { if (!dom.i2cMonitor) return; const d = document.createElement('div'); d.className='ev'; d.textContent = text; dom.i2cMonitor.appendChild(d); dom.i2cMonitor.scrollTop = dom.i2cMonitor.scrollHeight; }
+function i2cReadSeq7bit(addr7, offset, length) {
+    // Simulate: START, addr(W), offset, RESTART, addr(R), data..., STOP
+    const addrW = (addr7 << 1) | 0; const addrR = (addr7 << 1) | 1;
+    appendI2C(`START`); setPinDigital(4, 0, '(SDA pull low)');
+    appendI2C(`ADDR 0x${addrW.toString(16).padStart(2,'0')} (W)`);
+    appendI2C(`DATA 0x${offset.toString(16).padStart(2,'0')}`);
+    appendI2C(`RE-START`);
+    appendI2C(`ADDR 0x${addrR.toString(16).padStart(2,'0')} (R)`);
+    const bytes = new Array(length).fill(0).map((_,i)=> (offset+i) & 0xff);
+    appendI2C(`READ [${bytes.map(b=>`0x${b.toString(16).padStart(2,'0')}`).join(' ')}]`);
+    appendI2C(`STOP`); setPinDigital(4, 1, '(SDA idle)');
+    // Draw scope-like timing (simplified)
+    drawI2CScopeSequence(addrW, offset, addrR, bytes);
+}
+function setMeasureGuide(html) { if (dom.measureGuide) dom.measureGuide.innerHTML = html; }
+
+// Scope drawing helpers
+function clearScope() { const scl = document.getElementById('scope-scl'); const sda = document.getElementById('scope-sda'); if (scl) scl.innerHTML=''; if (sda) sda.innerHTML=''; }
+function pushSeg(el, cls, width=10) { if (!el) return; const seg = document.createElement('div'); seg.className = `seg ${cls}`; seg.style.width = `${width}px`; el.appendChild(seg); }
+function drawI2CScopeSequence(addrW, offset, addrR, bytes) {
+    const scl = document.getElementById('scope-scl'); const sda = document.getElementById('scope-sda'); if (!scl || !sda) return;
+    clearScope();
+    // START (SDA low while SCL high)
+    pushSeg(scl, 'high', 8); pushSeg(sda, 'high', 4); pushSeg(sda, 'low', 8); pushSeg(scl, 'low', 8);
+    // Address W (8 bits + ACK)
+    for (let i=7;i>=0;i--) { pushSeg(scl, 'low', 6); pushSeg(sda, ((addrW>>i)&1)?'high':'low', 6); pushSeg(scl, 'high', 6); }
+    // ACK bit
+    pushSeg(scl, 'low', 6); pushSeg(sda, 'low', 6); pushSeg(scl, 'high', 6);
+    // Offset byte
+    for (let i=7;i>=0;i--) { pushSeg(scl, 'low', 6); pushSeg(sda, ((offset>>i)&1)?'high':'low', 6); pushSeg(scl, 'high', 6); }
+    pushSeg(scl, 'low', 6); pushSeg(sda, 'low', 6); pushSeg(scl, 'high', 6);
+    // RE-START
+    pushSeg(scl, 'high', 8); pushSeg(sda, 'high', 4); pushSeg(sda, 'low', 8); pushSeg(scl, 'low', 8);
+    // Address R
+    for (let i=7;i>=0;i--) { pushSeg(scl, 'low', 6); pushSeg(sda, ((addrR>>i)&1)?'high':'low', 6); pushSeg(scl, 'high', 6); }
+    pushSeg(scl, 'low', 6); pushSeg(sda, 'low', 6); pushSeg(scl, 'high', 6);
+    // Data bytes (show as meta blocks for brevity)
+    bytes.forEach(() => { pushSeg(scl, 'low', 6); pushSeg(sda, 'meta', 48); pushSeg(scl, 'high', 6); pushSeg(scl, 'low', 6); pushSeg(sda, 'low', 6); pushSeg(scl, 'high', 6); });
+    // STOP (SDA high while SCL high)
+    pushSeg(scl, 'high', 10); pushSeg(sda, 'low', 8); pushSeg(sda, 'high', 10);
+}
+
+// Clear all breakout UI state
+function clearBreakoutUI() {
+    if (dom.pinGrid) dom.pinGrid.innerHTML = '';
+    clearI2C();
+    clearScope();
+    if (dom.breakoutStatus) setBreakoutStatus('Idle', 'warn');
+    if (dom.measureGuide) dom.measureGuide.innerHTML = '';
+}
+
+function ensureBreakoutPanel() {
+    if (!dom.breakoutPanel) return;
+    dom.breakoutPanel.classList.remove('hidden');
+    if (!pinIdxToEl || Object.keys(pinIdxToEl).length === 0 || !dom.pinGrid || dom.pinGrid.children.length === 0) {
+        initBreakoutPinGrid();
+    }
+}
+
+function resetBreakoutValues() {
+    if (!pinIdxToEl) return;
+    Object.values(pinIdxToEl).forEach(rec => { if (rec && rec.valEl) rec.valEl.textContent = '—'; });
+    clearI2C(); clearScope(); setBreakoutStatus('Idle', 'warn'); if (dom.measureGuide) dom.measureGuide.innerHTML='';
+}
+
 
 // --- FLOW DSL (Minimal) ---
 // Graph describes valid adjacency for highlight traversal
@@ -601,20 +793,43 @@ const scenarioLibrary = {
         // Scene 3: Copper Link Handshake (Host A ↔ MC A)
         [
              { log: { title: 'Host A connects to Media Converter A.', subSteps: ["An Ethernet cable is connected between Host A's NIC and the copper port of Media Converter A."]}, highlights: ['A.phy', 'A.mc'] },
-             { log: { title: 'Auto-Negotiation on Copper Link (Host A <-> MC A).', subSteps: [() => `<b>Capability Sets:</b> Host A NIC = ${state.caps.nicA} Mbps; MC A Copper = ${state.caps.mcA_copper} Mbps`, "<b>RJ45 connector from Host A plugged into Media Converter A's copper port.</b>", "<b>PHYs send Fast Link Pulses (FLP):</b>", "<ul><li>Both sides advertise capabilities from their sets.</li><li>Standard priority selects highest common rate.</li></ul>", () => { const a=state.caps.nicA.split(',').map(Number); const b=state.caps.mcA_copper.split(',').map(Number).sort((x,y)=>y-x); const r=b.find(k=>a.includes(k)); return r?`<b>Result:</b> ${r>=1000?'1Gbps':r+'Mbps'} using ${r>=1000?'PAM-5 (all 4 pairs)':'4B/5B + MLT-3 (2 pairs)'}.`:'<b>No common mode:</b> Link remains DOWN'; }, "<b>What does the OS think now?</b>", "<ul><li>The NIC driver reports <i>carrier on</i> when its local copper PHY negotiates with MC A.</li><li>The OS sees a local L1/L2 link only. The MC is not an IP endpoint; it has no IP address on this patch segment.</li><li>DHCP may start on the host; frames will leave A and enter MC A even if the far fiber side is down.</li></ul>", "<b>If SFP is missing on MC A:</b>", "<ul><li>Copper auto‑neg still succeeds (local segment A↔MC A).</li><li>MC A cannot forward frames to fiber; DHCP/ARP will get no replies.</li><li>From OS view: <i>carrier on</i> but no responses, timeouts occur.</li></ul>", "<b>If SFP present but fiber path is down:</b>", "<ul><li>Same as above: local copper up, remote path down; MC A drops/doesn’t forward beyond optical port.</li><li>OS continues retries (DHCP, ARP) without answers.</li></ul>"]}, highlights: ['A.phy', 'A.mc'] , action: async () => { animateVoltages(true); await sleep(600); animateVoltages(false); await highlightSequenceByIds([ { id: 'if_copper_mc_A', detail: 'Copper PHY negotiating (FLP)' } ], 200); active(document.getElementById('mcA'), true); } },
+             { log: { title: 'Auto-Negotiation on Copper Link (Host A <-> MC A).', subSteps: [() => `<b>Capability Sets:</b> Host A NIC = ${state.caps.nicA} Mbps; MC A Copper = ${state.caps.mcA_copper} Mbps`, "<b>RJ45 connector from Host A plugged into Media Converter A's copper port.</b>", "<b>PHYs send Fast Link Pulses (FLP):</b>", "<ul><li>Both sides advertise capabilities from their sets.</li><li>Standard priority selects highest common rate.</li></ul>", () => { const a=state.caps.nicA.split(',').map(Number); const b=state.caps.mcA_copper.split(',').map(Number).sort((x,y)=>y-x); const r=b.find(k=>a.includes(k)); return r?`<b>Result:</b> ${r>=1000?'1Gbps':r+'Mbps'} using ${r>=1000?'PAM-5 (all 4 pairs)':'4B/5B + MLT-3 (2 pairs)'}.`:'<b>No common mode:</b> Link remains DOWN'; }, "<b>What does the OS think now?</b>", "<ul><li>The NIC driver reports <i>carrier on</i> when its local copper PHY negotiates with MC A.</li><li>The OS sees a local L1/L2 link only. The MC is not an IP endpoint; it has no IP address on this patch segment.</li><li>DHCP may start on the host; frames will leave A and enter MC A even if the far fiber side is down.</li></ul>", "<b>If SFP is missing on MC A:</b>", "<ul><li>Copper auto‑neg still succeeds (local segment A↔MC A).</li><li>MC A cannot forward frames to fiber; DHCP/ARP will get no replies.</li><li>From OS view: <i>carrier on</i> but no responses, timeouts occur.</li></ul>", "<b>If SFP present but fiber path is down:</b>", "<ul><li><b>Local frames:</b> Host A continues to emit L2 frames (DHCP DISCOVER broadcasts, ARP requests, ICMP) which A’s PHY encodes on copper and MC A receives electrically.</li><li><b>Gated optical path:</b> With RX_LOS=HIGH (no light) or TX_DISABLE=HIGH, MC A’s optical transmitter remains off; no 8B/10B symbols are launched.</li><li><b>No store‑and‑forward:</b> Media converters operate at L1; they do not buffer. Without an active optical path, incoming copper symbols are dropped at the MC’s copper/logic boundary.</li><li><b>Host view:</b> Copper stays carrier‑on; higher layers continue retries without responses, leading to timeouts.</li></ul>"]}, highlights: ['A.phy', 'A.mc'] , action: async () => { animateVoltages(true); await sleep(600); animateVoltages(false); await highlightSequenceByIds([ { id: 'if_copper_mc_A', detail: 'Copper PHY negotiating (FLP)' } ], 200); active(document.getElementById('mcA'), true); } },
              { log: { title: 'Copper Link UP! (Host A <-> MC A).', subSteps: ["<b>Agreement Finalized:</b> Both PHYs exchange acknowledgement bits confirming 1000BASE-T Full-Duplex agreement.", "<b>Link State Change:</b>", "<ul><li>Media Converter A's copper PHY signals 'Link Up' to its internal MAC controller.</li><li>Host A's NIC PHY signals 'Link Up' to its MAC controller via GMII.</li><li>Host A's MAC controller raises an IRQ to the CPU.</li><li>Host A's network driver handles the interrupt and sets interface state to 'carrier on'.</li></ul>", "<b>Partial Connectivity:</b> Host A can now communicate with Media Converter A, but the fiber link to Host B is not yet established."]}, highlights: ['A.phy', 'A.mc'] , action: async () => { await highlightSequenceForHost('A', [ { key: 'phy' }, { key: 'if_mac_phy', detail: 'PHY asserts Link Up' }, { key: 'mac' }, { key: 'if_ip_mac', detail: 'NIC raises IRQ' }, { key: 'ip' } ], 250); } }
         ],
         // Scene 4: Copper Link Handshake (Host B ↔ MC B)
         [
             { log: { title: 'Host B connects to Media Converter B.', subSteps: ["An Ethernet cable is connected between Host B's NIC and the copper port of Media Converter B."]}, highlights: ['B.phy', 'B.mc'] },
-            { log: { title: 'Auto-Negotiation on Copper Link (Host B <-> MC B).', subSteps: [() => `<b>Capability Sets:</b> Host B NIC = ${state.caps.nicB} Mbps; MC B Copper = ${state.caps.mcB_copper} Mbps`, "<b>RJ45 connector from Host B plugged into Media Converter B's copper port.</b>", "<b>PHYs send Fast Link Pulses (FLP):</b>", "<ul><li>Both sides advertise capabilities from their sets.</li><li>Standard priority selects highest common rate.</li></ul>", () => { const a=state.caps.nicB.split(',').map(Number); const b=state.caps.mcB_copper.split(',').map(Number).sort((x,y)=>y-x); const r=b.find(k=>a.includes(k)); return r?`<b>Result:</b> ${r>=1000?'1Gbps':r+'Mbps'} using ${r>=1000?'PAM-5 (all 4 pairs)':'4B/5B + MLT-3 (2 pairs)'}.`:'<b>No common mode:</b> Link remains DOWN'; }, "<b>OS and rate governance:</b>", "<ul><li>At this time SFP B may be <i>absent</i>, so MC B allows the copper link to negotiate independently.</li><li>When SFP B is later inserted and reports a lower rate (e.g., 100BASE‑FX), MC B will <i>drop</i> copper link and <i>re-advertise</i> 10/100 only, forcing Host B NIC to renegotiate.</li><li>During this forced renegotiation the OS on B observes link <i>down</i> → <i>up</i>; DHCP/ARP timers pause/resume.</li></ul>", "<b>What does the OS think now?</b>", "<ul><li>The NIC driver reports <i>carrier on</i> when its local copper PHY negotiates with MC B.</li><li>The OS sees a local L1/L2 link only. The MC is not an IP endpoint; it has no IP address on this patch segment.</li><li>DHCP may start on the host; frames will leave B and enter MC B even if the far fiber side is down.</li></ul>"]}, highlights: ['B.phy', 'B.mc'] , action: async () => { animateVoltages(true); await sleep(600); animateVoltages(false); await highlightSequenceByIds([ { id: 'if_copper_mc_B', detail: 'Copper PHY negotiating (FLP)' } ], 200); active(document.getElementById('mcB'), true); } },
+            { log: { title: 'Auto-Negotiation on Copper Link (Host B <-> MC B).', subSteps: [() => `<b>Capability Sets:</b> Host B NIC = ${state.caps.nicB} Mbps; MC B Copper = ${state.caps.mcB_copper} Mbps`, "<b>RJ45 connector from Host B plugged into Media Converter B's copper port.</b>", "<b>PHYs send Fast Link Pulses (FLP):</b>", "<ul><li>Both sides advertise capabilities from their sets.</li><li>Standard priority selects highest common rate.</li></ul>", () => { const a=state.caps.nicB.split(',').map(Number); const b=state.caps.mcB_copper.split(',').map(Number).sort((x,y)=>y-x); const r=b.find(k=>a.includes(k)); return r?`<b>Result:</b> ${r>=1000?'1Gbps':r+'Mbps'} using ${r>=1000?'PAM-5 (all 4 pairs)':'4B/5B + MLT-3 (2 pairs)'}.`:'<b>No common mode:</b> Link remains DOWN'; }, "<b>OS and rate governance:</b>", "<ul><li>At this time SFP B may be <i>absent</i>, so MC B allows the copper link to negotiate independently.</li><li>When SFP B is later inserted and reports a lower rate (e.g., 100BASE‑FX), MC B will <i>drop</i> copper link and <i>re-advertise</i> 10/100 only, forcing Host B NIC to renegotiate.</li><li>During this forced renegotiation the OS on B observes link <i>down</i> → <i>up</i>; DHCP/ARP timers pause/resume.</li></ul>", "<b>What does the OS think now?</b>", "<ul><li>The NIC driver reports <i>carrier on</i> when its local copper PHY negotiates with MC B.</li><li>The OS sees a local L1/L2 link only. The MC is not an IP endpoint; it has no IP address on this patch segment.</li><li>DHCP may start on the host; frames will leave B and enter MC B even if the far fiber side is down.</li></ul>", "<b>If SFP present but fiber path is down:</b>", "<ul><li><b>Local frames:</b> Host B continues emitting L2 frames (DHCP DISCOVER broadcasts, ARP requests, ICMP) that B’s PHY encodes on copper and MC B receives electrically.</li><li><b>Gated optical path:</b> With RX_LOS=HIGH (no light from the far end) or TX_DISABLE=HIGH, MC B’s optical transmitter is off; no 8B/10B symbols are launched toward fiber.</li><li><b>No store‑and‑forward:</b> The media converter is Layer‑1 only; without a valid optical path, copper symbols are dropped at the MC’s copper/logic boundary.</li><li><b>Host view:</b> Copper remains carrier‑on; the host continues retries (DHCP/ARP) without responses, causing timeouts at higher layers.</li></ul>"]}, highlights: ['B.phy', 'B.mc'] , action: async () => { animateVoltages(true); await sleep(600); animateVoltages(false); await highlightSequenceByIds([ { id: 'if_copper_mc_B', detail: 'Copper PHY negotiating (FLP)' } ], 200); active(document.getElementById('mcB'), true); } },
             { log: { title: 'Copper Link UP! (Host B <-> MC B).', subSteps: ["<b>Agreement Finalized:</b> Both PHYs exchange acknowledgement bits confirming the chosen speed/duplex.", "<b>Link State Change:</b>", "<ul><li>Media Converter B's copper PHY signals 'Link Up' to its internal MAC.</li><li>Host B's NIC PHY signals 'Link Up' to its MAC controller via GMII.</li><li>Host B's MAC controller raises an IRQ to the CPU.</li><li>Host B's driver sets interface state to 'carrier on'.</li></ul>"]}, highlights: ['B.phy', 'B.mc'] , action: async () => { await highlightSequenceForHost('B', [ { key: 'phy' }, { key: 'if_mac_phy', detail: 'PHY asserts Link Up' }, { key: 'mac' }, { key: 'if_ip_mac', detail: 'NIC raises IRQ' }, { key: 'ip' } ], 250); } }
         ],
         // Scene 5: SFP B inserted (after copper)
         [
-            { log: { title: 'SFP B Inserted (after copper).', subSteps: ["SFP B is inserted into Media Converter B.", "<b>I2C Read:</b> MC B reads SFP B EEPROM via I2C (MSA) to determine supported optical rates.", "<b>Rate coordination:</b> If SFP B reports 100BASE‑FX only while copper negotiated 1Gbps, MC B <i>forces</i> copper renegotiation by dropping link and re‑advertising 10/100.", "<b>OS State on B:</b> The NIC sees link <i>down</i> then <i>up</i>; DHCP/ARP timers pause and resume; routes persist but traffic stalls briefly.", "<b>Clocks & timing:</b> Copper 1000BASE‑T uses master/slave clock resolution; fiber 1000BASE‑X uses SerDes and CDR. MC B bridges these domains; no copper master/slave exists on the optical side."] }, highlights: ['B.mc'] , action: async () => { await highlightSequenceByIds([ { id: 'if_mc_sfp_B', detail: 'I2C: EEPROM read (MSA)' }, { id: 'sfpB' } ], 220); active(document.getElementById('mcB'), true); } }
+            { log: { title: 'SFP B Inserted (after copper).', subSteps: [
+                "SFP B is inserted into Media Converter B.",
+                "<b>I2C Read:</b> MC B reads SFP B EEPROM via I2C (MSA) to determine supported optical rates.",
+                "<b>Rate coordination:</b>",
+                "<ul><li><b>Mismatch detection:</b> If SFP B supports only 100BASE‑FX while the copper segment negotiated 1Gbps, MC B must prevent oversubscription.</li><li><b>Policy:</b> MC B drops the copper link (signals <i>NO CARRIER</i> to Host B) and <i>re‑advertises</i> 10/100 only.</li><li><b>Renegotiation:</b> Host B’s NIC restarts auto‑negotiation; the new highest common copper rate becomes 100Mbps/Full.</li><li><b>Why not force the NIC directly?</b> Copper speed/duplex are set by standard 802.3 auto‑negotiation; the only safe way to change rates is to cycle link and advertise a different set.</li></ul>",
+                "<b>OS State on B:</b>",
+                "<ul><li><b>Link transition:</b> The NIC reports <i>link down</i> → <i>link up</i> as renegotiation completes.</li><li><b>Timers:</b> DHCP and ARP timeouts pause during down state and resume afterwards; existing routes persist but traffic is momentarily stalled.</li><li><b>Apps:</b> Long‑lived sockets (e.g., TCP) stall or retransmit; ICMP/ping shows intermittent timeouts.</li></ul>",
+                "<b>Clocks & timing:</b> Copper 1000BASE‑T uses master/slave clock resolution; fiber 1000BASE‑X uses SerDes with CDR. The media converter bridges these; no master/slave exists on the optical side."
+            ] }, highlights: ['B.mc'] , action: async () => { await highlightSequenceByIds([ { id: 'if_mc_sfp_B', detail: 'I2C: EEPROM read (MSA)' }, { id: 'sfpB' } ], 220); active(document.getElementById('mcB'), true); } }
         ],
-        // Scene 6: Fiber Link Handshake
+        // Scene 6: Copper Rate Renegotiation (MC B ↔ Host B)
+        [
+            { log: { title: 'Rate mismatch detected. MC B drops copper link.', subSteps: [
+                "<b>Trigger:</b> SFP B capability (e.g., 100BASE‑FX) is lower than current copper rate (1Gbps).",
+                "<b>Action:</b> MC B disables copper link (<i>NO CARRIER</i>) and updates advertised capabilities to 10/100 only.",
+                "<b>Host B PHY:</b> Receives link‑down; driver posts link‑down event; TX is paused and RX ring drains.",
+                "<b>Timers:</b> DHCP/ARP pause; TCP sessions back off; pings time out."
+            ] }, highlights: ['B.mc','B.phy'] , action: async () => { state.hostB.link = false; render(); await highlightSequenceByIds([ { id: 'if_copper_mc_B', detail: 'Drop link; re‑advertise 10/100' } ], 220); } },
+            { log: { title: 'Copper link renegotiates to 100Mbps/Full.', subSteps: [
+                "<b>Auto‑neg restart:</b> MC B sends FLP with 10/100 only; Host B NIC responds.",
+                "<b>Resolution:</b> Highest common mode selected: 100Mbps/Full; MLT‑3 + 4B/5B on two pairs.",
+                "<b>Host B PHY:</b> Link‑up asserted to MAC; IRQ to CPU; driver sets <i>carrier on</i>.",
+                "<b>Resume:</b> DHCP/ARP timers resume; traffic flows at 100Mbps."
+            ] }, highlights: ['B.phy','B.mc'] , action: async () => { animateVoltages(true); await sleep(600); animateVoltages(false); state.hostB.link = true; state.hostB.speed = '100Mbps/Full'; render(); await highlightSequenceForHost('B', [ { key: 'phy' }, { key: 'if_mac_phy', detail: 'PHY asserts Link Up' }, { key: 'mac' }, { key: 'if_ip_mac', detail: 'NIC raises IRQ' }, { key: 'ip' } ], 220); } }
+        ],
+        // Scene 7: Fiber Link Handshake
         [
             { log: { title: 'Fiber Optic Cable Connected.', subSteps: ["The LC fiber optic patch cable is connected between the two SFP modules.", "<b>Optical Interfaces Active:</b> Each SFP exposes optical TX/RX subassemblies connected to the LC receptacles. TX_DISABLE/TX_FAULT control + monitor laser; RX_LOS indicates received optical power threshold."]}, highlights: ['A.sfp', 'B.sfp'] },
             { log: { title: 'SFP A Transmit Laser Enabled.', subSteps: ["<b>Link State Propagation:</b> Media Converter A's internal logic detects that its copper-side PHY link is UP.", "<b>Laser Enable Sequence:</b>", "<ul><li>The Media Converter's microcontroller asserts the 'TX_DISABLE' pin on SFP A to LOW (enabling transmission).</li><li>SFP A's internal laser driver circuit powers up the VCSEL (Vertical Cavity Surface Emitting Laser).</li><li>The VCSEL begins emitting 850nm infrared light modulated at 1.25 Gbps (8B/10B encoded 1Gbps data).</li><li>Light travels through the LC connector into the fiber optic cable's core.</li></ul>", "<b>Interfaces Highlighted:</b> Copper PHY → MC logic → <i>MC↔SFP MSA</i> → <i>SFP Optical TX</i> → Fiber."]}, highlights: ['A.if_copper_mc', 'A.if_mc_sfp', 'A.sfp'], action: async () => { await highlightSequenceByIds([ { id: 'if_copper_mc_A', detail: 'Copper PHY link up' }, { id: 'if_mc_sfp_A', detail: 'MSA pins: TX_DISABLE=LOW' }, { id: 'sfpA' }, { id: 'if_sfp_fiber_A', detail: 'Optical TX active' } ], 220); } },
@@ -624,6 +839,100 @@ const scenarioLibrary = {
         // Scene 6: Final Link State
         [
             { log: { title: 'End-to-End Link Evaluation', subSteps: [() => { const rA = (function(){ const A=state.caps.nicA.split(',').map(Number); const B=state.caps.mcA_copper.split(',').map(Number).sort((x,y)=>y-x); for(const k of B){ if(A.includes(k)) return k; } return null; })(); const rB = (function(){ const A=state.caps.nicB.split(',').map(Number); const B=state.caps.mcB_copper.split(',').map(Number).sort((x,y)=>y-x); for(const k of B){ if(A.includes(k)) return k; } return null; })(); const rFiberSlotsOK = (function(){ const a=state.caps.mcA_sfp.split(','); const b=state.caps.mcB_sfp.split(','); return a.some(x=>b.includes(x)); })(); const rSFP = (function(){ const A=state.caps.sfpA.split(',').map(Number); const B=state.caps.sfpB.split(',').map(Number).sort((x,y)=>y-x); for(const k of B){ if(A.includes(k)) return k; } return null; })(); const ok = rA && rB && rFiberSlotsOK && rSFP; return ok?'<b>Complete Path Established:</b>':'<b>Path Incomplete:</b> One or more segments lack a common mode.'; }, () => { const fmt=(r)=> r? (r>=1000?'1Gbps':r+'Mbps') : 'NO LINK'; const rA=(function(){ const A=state.caps.nicA.split(',').map(Number); const B=state.caps.mcA_copper.split(',').map(Number).sort((x,y)=>y-x); for(const k of B){ if(A.includes(k)) return k; } return null; })(); const rSFP=(function(){ const A=state.caps.sfpA.split(',').map(Number); const B=state.caps.sfpB.split(',').map(Number).sort((x,y)=>y-x); for(const k of B){ if(A.includes(k)) return k; } return null; })(); const rB=(function(){ const A=state.caps.nicB.split(',').map(Number); const B=state.caps.mcB_copper.split(',').map(Number).sort((x,y)=>y-x); for(const k of B){ if(A.includes(k)) return k; } return null; })(); return `<ul><li>Host A ↔ MC A (copper): ${fmt(rA)} (${rA>=1000?'PAM-5':'4B/5B+MLT-3'})</li><li>SFP A ↔ SFP B (fiber): ${fmt(rSFP)} (${rSFP>=1000?'8B/10B':'NRZ 100BASE-FX'})</li><li>MC B ↔ Host B (copper): ${fmt(rB)} (${rB>=1000?'PAM-5':'4B/5B+MLT-3'})</li></ul>`; }, "<b>Transparent Operation:</b>", "<ul><li>Media Converters perform real-time electrical-to-optical and optical-to-electrical conversion.</li><li>Frame forwarding occurs at Layer 1 (Physical) - no MAC address inspection or modification.</li></ul>", "<b>Ready for Higher Layers:</b>", "<ul><li>If all three segments have carrier, OS proceeds with DHCP/manual IP.</li></ul>"]} }
+        ]
+    ];
+
+    // New Scenario 4: Fiber to SFP Breakout (B-side breakout, no MC, no Host B copper)
+    lib.fiber_breakout = [
+        // Scene 0 – A-side identical start: Host A ↔ MC A copper + SFP A
+        [{ log: { title: 'State: Disconnected.', subSteps: ["All components are disconnected and powered down."] } }],
+        [
+            { log: { title: 'Media Converter A Powered On.', subSteps: ["MC A is powered.", "Copper PHY idle; optical TX disabled until copper up or policy allows."] }, highlights: ['A.mc'] }
+        ],
+        [
+            { log: { title: 'SFP A Inserted in MC A.', subSteps: ["MC A reads SFP A via I2C (MSA) to learn supported rates."] }, highlights: ['A.if_mc_sfp','A.sfp'] }
+        ],
+        [
+            { log: { title: 'Host A ↔ MC A Copper Negotiation.', subSteps: [
+                () => `<b>Advertised sets:</b> Host A NIC = ${state.caps.nicA}; MC A Copper = ${state.caps.mcA_copper}`,
+                "<b>Resolution rule:</b> IEEE 802.3 auto‑neg chooses the highest common capability <i>present in both advertisements</i> (e.g., 1000BASE‑T Full over 100BASE‑TX).",
+                "<b>No up‑speeding:</b> If MC A copper supports only 10/100, the negotiated result cannot be 1Gbps, even if Host A supports 1Gbps. MC A’s advertisement limits the outcome.",
+                "<b>Effect of SFP rate:</b> If SFP A later restricts optical to 100BASE‑FX, MC A may <i>drop</i> copper and re‑advertise 10/100 to downshift (see later steps)."
+            ] }, highlights: ['A.phy','A.mc'], action: async () => { animateVoltages(true); await sleep(600); animateVoltages(false); } }
+        ],
+        // Scene 4 – B-side: SFP breakout only
+        [
+            { log: { title: 'SFP Breakout Board Powered (B side).', subSteps: [
+                "<b>Power rails:</b> Vcc (3.3V) stable; measure ~3.30V at VCC pins (per MSA).",
+                "<b>Pull-ups:</b> SDA/SCL have ~2.2–10k pull-ups to 3.3V on the breakout; expect ~3.3V idle on both lines.",
+                "<b>Status pins (no module yet):</b>",
+                "<ul><li>MOD_DEF0 (pin 6) HIGH (no module grounds it).</li><li>TX_DISABLE (pin 3) HIGH by pull-up ≈ 3.3V.</li><li>TX_FAULT (pin 2) HIGH (open drain, pulled up).</li><li>RX_LOS (pin 8) HIGH (no light / no module).</li></ul>",
+                "<b>LEDs (if provided):</b> Power LED ON, TX/RX status LEDs off.",
+                "<b>No host copper on B:</b> There is no NIC B; this board exposes pins for measurement only.",
+                "<b>Where to probe (DMM):</b>",
+                "<ul><li>Black probe to any VeeR/VeeT (pins 1,9,10,11,16,19,20 = GND).</li><li>Red probe to VccR (14) or VccT (15): ~3.30V.</li><li>Red probe to SDA (4) / SCL (5): ~3.30V idle.</li><li>Red probe to TX_DISABLE (3), TX_FAULT (2), RX_LOS (8): ~3.30V idle.</li></ul>"
+            ] }, highlights: [], action: () => {
+                ensureBreakoutPanel(); resetBreakoutValues(); setBreakoutStatus('Powered', 'warn');
+                setPinVoltage(14, 3.30, '(VccR)'); setPinVoltage(15, 3.30, '(VccT)');
+                setPinDigital(4, true, '(SDA idle)'); setPinDigital(5, true, '(SCL idle)');
+                setPinDigital(6, true, '(MOD_DEF0 HIGH, no module)');
+                setPinDigital(3, true, '(TX_DISABLE)'); setPinDigital(2, true, '(TX_FAULT)'); setPinDigital(8, true, '(RX_LOS)');
+                setMeasureGuide("Use DMM: COM→any Vee pin (GND). V probe→14/15 ≈3.30V. Logic analyzer on pins 4(SDA)/5(SCL) to observe 100 kHz when a controller performs a read.");
+                const pins = document.getElementById('breakoutPins');
+                if (pins) pins.innerHTML = '<div><b>Power:</b> VCC ≈ 3.30V</div><div><b>I2C idle:</b> SDA ≈ 3.3V, SCL ≈ 3.3V</div><div><b>Status:</b> MOD_DEF0 ≈ 3.3V (no module), TX_DISABLE ≈ 3.3V, TX_FAULT ≈ 3.3V, RX_LOS ≈ 3.3V</div>';
+            } }
+        ],
+        [
+            { log: { title: 'Insert SFP B into Breakout.', subSteps: [
+                "<b>Presence detect:</b> MOD_DEF0 (pin 6) is grounded by the module → logic LOW (0V).",
+                "<b>I2C access (exact waveforms):</b>",
+                "<ul><li>7-bit device address: A0h page = 0x50 (8-bit write=0xA0, read=0xA1).</li><li>Bus speed 100 kHz: observe square waves on SCL; SDA transitions on SCL low.</li><li>Transaction format:</li><ul><li>START → 0xA0 (W) → OFFSET 0x00 → RE-START → 0xA1 (R) → READ N bytes → STOP</li></ul></ul>",
+                "<b>Default states:</b> TX_DISABLE HIGH (~3.3V), TX laser inhibited; TX_FAULT HIGH; RX_LOS HIGH (no optical input).",
+                "<b>Where to probe:</b>",
+                "<ul><li>Logic analyzer: SCL to pin 5, SDA to pin 4, GND to any Vee pin.</li><li>DMM: MOD_DEF0 pin 6 ≈ 0V (present), TX_DISABLE pin 3 ≈ 3.3V, RX_LOS pin 8 ≈ 3.3V.</li></ul>"
+            ] }, highlights: [], action: () => {
+                ensureBreakoutPanel(); resetBreakoutValues();
+                setBreakoutStatus('Module present', 'ok');
+                setPinDigital(6, false, '(PRESENT)');
+                appendI2C('— Read SFP ID (A0h) first 16 bytes');
+                i2cReadSeq7bit(0x50, 0x00, 16);
+                setPinDigital(4, true, '(SDA idle)'); setPinDigital(5, true, '(SCL idle)');
+                setPinDigital(3, true, '(TX_DISABLE HIGH)'); setPinDigital(2, true, '(TX_FAULT HIGH)'); setPinDigital(8, true, '(RX_LOS HIGH)');
+                setMeasureGuide("Connect LA: SCL→pin5, SDA→pin4, GND→pin1/9. Expect: START, 0xA0, 0x00, RE-START, 0xA1, READ..., STOP. Idle ~3.3V. DMM on pin6 ≈ 0V.");
+                const pins = document.getElementById('breakoutPins');
+                if (pins) pins.innerHTML = '<div><b>I2C:</b> START 0xA0 (W) 0x00 RE-START 0xA1 (R) READ.. STOP</div><div><b>Status:</b> MOD_DEF0 ≈ 0V, TX_DISABLE ≈ 3.3V, RX_LOS ≈ 3.3V</div>';
+            } }
+        ],
+        [
+            { log: { title: 'Connect Fiber A (MC A) → B (Breakout).', subSteps: [
+                "<b>Optical path:</b> Light from SFP A arrives at SFP B’s receiver.",
+                "<b>RX_LOS de-asserts:</b> When optical power exceeds threshold, RX_LOS transitions LOW (~0V); verify with DMM/scope on RX_LOS pin.",
+                "<b>TX path (receive-only demo):</b> TX_DISABLE remains HIGH (~3.3V), so TX laser stays off; TX_FAULT remains HIGH.",
+                "<b>I2C DOM read (exact):</b>",
+                "<ul><li>7-bit device address: A2h page = 0x51 (8-bit write=0xA2, read=0xA3).</li><li>Read diagnostics (SFF-8472): offsets 0x60..0x69 (Temp/Vcc/TxBias/TxPwr/RxPwr).</li><li>Sequence: START → 0xA2 (W) → 0x60 → RE-START → 0xA3 (R) → READ 0x0A → STOP</li></ul>",
+                "<b>Where to probe:</b>",
+                "<ul><li>DMM: RX_LOS pin 8 ≈ 0V when light present.</li><li>LA: decode DOM read on pins 4/5; confirm addresses 0xA2/0xA3 and offset 0x60.</li></ul>",
+                "<b>No Ethernet forwarding:</b> This board is not a MAC/PHY; it exposes electrical/I2C signals only."
+            ] }, highlights: [], action: () => {
+                ensureBreakoutPanel();
+                setBreakoutStatus('Optical RX detected', 'ok');
+                setPinDigital(8, false, '(RX_LOS LOW)');
+                appendI2C('— Read DOM (A2h) 0x60..0x69');
+                i2cReadSeq7bit(0x51, 0x60, 10);
+                setMeasureGuide("DMM: pin8→GND ≈0V when fiber lit. LA: capture START, 0xA2 (W), 0x60, RE-START, 0xA3 (R), 10 bytes, STOP. Idle ~3.3V on SDA/SCL.");
+                const pins = document.getElementById('breakoutPins');
+                if (pins) pins.innerHTML = '<div><b>Status:</b> RX_LOS ≈ 0V (light present), TX_DISABLE ≈ 3.3V, TX_FAULT ≈ 3.3V</div><div><b>I2C:</b> START 0xA2 0x60 RE-START 0xA3 READ×10 STOP</div>';
+            } }
+        ],
+        [
+            { log: { title: 'Engineer Checklist (B Breakout).', subSteps: [
+                "VCC ≈ 3.3V steady.",
+                "SDA/SCL idle ≈ 3.3V; 100 kHz transactions visible when reading A0h/A2h.",
+                "RX_LOS: HIGH without light, LOW with light present.",
+                "TX_DISABLE: HIGH by default (laser disabled).",
+                "TX_FAULT: Typically HIGH idle; stays HIGH while TX disabled.",
+                "MOD_DEF0: grounded to indicate presence."
+            ] } }
         ]
     ];
 })(scenarioLibrary);
@@ -646,6 +955,20 @@ function render() {
             const pin = parseInt(el.getAttribute('data-pin'), 10);
             el.classList.toggle('inactive', !activePins.includes(pin));
         });
+    }
+    // Toggle right-side copper run visibility in fiber view for breakout scenario
+    const rightRun = document.getElementById('copper-run-right');
+    const portRow = document.getElementById('fiber-port-row');
+    if (rightRun) rightRun.style.display = state.scenario === 'fiber_breakout' ? 'none' : '';
+    const mcB = document.getElementById('mcB');
+    const breakoutB = document.getElementById('breakoutB');
+    if (mcB) mcB.classList.toggle('hidden', state.scenario === 'fiber_breakout');
+    if (breakoutB) breakoutB.classList.toggle('hidden', state.scenario !== 'fiber_breakout');
+    if (dom.breakoutPanel) dom.breakoutPanel.classList.toggle('hidden', state.scenario !== 'fiber_breakout');
+    if (portRow) {
+        portRow.textContent = state.scenario === 'fiber_breakout'
+            ? 'HOST A ↔ Copper (4 pairs) ↔ Media Converter A ↔ SFP A ↔ Fiber ↔ SFP B (Breakout)'
+            : 'HOST A ↔ Copper (4 pairs) ↔ Media Converter A ↔ SFP A ↔ Fiber ↔ SFP B ↔ Media Converter B ↔ Copper ↔ HOST B';
     }
 
 
@@ -710,6 +1033,7 @@ function sleep(t) { return new Promise(r => setTimeout(r, t / state.speedFactor)
 function clearHighlightsAndDetails() {
     [dom.hosts.A, dom.hosts.B].forEach(host => {
         Object.values(host).forEach(el => {
+            if (!el) return;
             if (el.classList && typeof el.classList.remove === 'function') el.classList.remove('active');
             if (el.classList && el.classList.contains('interface')) setDetail(el, "");
         });
@@ -721,6 +1045,8 @@ async function runStep() {
     if (!currentScript[state.scene] || !currentScript[state.scene][state.step]) { state.playing = false; return; }
     
     clearHighlightsAndDetails();
+    // For breakout scenario, keep panel visible and structure persistent; just clear values
+    if (state.scenario === 'fiber_breakout') { ensureBreakoutPanel(); initBreakoutPinGrid(); resetBreakoutValues(); } else { clearBreakoutUI(); }
     
     const currentStep = currentScript[state.scene][state.step];
     logToScreen(currentStep.log);
@@ -754,6 +1080,8 @@ function prev() {
     const currentScript = scenarioLibrary[state.scenario];
     if(state.playing) return;
     clearHighlightsAndDetails();
+    // Prepare breakout pane structure if needed
+    if (state.scenario === 'fiber_breakout') { ensureBreakoutPanel(); initBreakoutPinGrid(); resetBreakoutValues(); } else { clearBreakoutUI(); }
     if (state.step > 0) { state.step--; } 
     else if (state.scene > 0) { state.scene--; state.step = currentScript[state.scene].length - 1; }
     
@@ -772,10 +1100,10 @@ function prev() {
             // Add the log entry for this step
             logToScreen(currentStepData.log);
             
-            // Execute the action (but skip animations for performance)
+            // Execute the action (but skip heavy visual animations; allow UI state like breakout)
             const stepAction = currentStepData.action;
             if (stepAction && stepAction.toString().indexOf('spawnAnimation') === -1 && stepAction.toString().indexOf('animateVoltages') === -1) {
-                stepAction();
+                try { stepAction(); } catch(e) { /* ignore transient */ }
             }
         }
     }
@@ -799,6 +1127,7 @@ function reset(full = true) {
     state = initialState(); 
     state.scenario = dom.scenarioSelect.value;
     if(full) dom.log.innerHTML = ''; 
+    clearBreakoutUI();
     render(); 
 }
 
