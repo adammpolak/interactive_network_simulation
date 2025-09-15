@@ -140,6 +140,25 @@
         .seg.low { background: #ef4444; }
         .seg.meta { background: #475569; }
 
+        /* --- Responsive Layout --- */
+        @media (max-width: 1024px) {
+            .top-container { grid-template-columns: 1fr; }
+            .controls-container { order: -1; }
+            .host { margin-bottom: 8px; }
+            .connection-container { margin-top: 8px; }
+            .breakout-panel { grid-template-columns: 1fr; }
+            .breakout-panel .panel-box { grid-column: auto !important; }
+        }
+        @media (max-width: 768px) {
+            .controls { position: sticky; top: 0; z-index: 20; }
+            .btns { flex-wrap: wrap; }
+            .cable-wrap { min-width: 640px; } /* allow horizontal scroll for detailed cables */
+            .cable { overflow-x: auto; }
+            #simulation-log { height: 16rem; font-size: 13px; }
+            .host .kvs { font-size: 11px; }
+            .layer h3 { font-size: 12px; }
+        }
+
     </style>
 </head>
 <body class="p-4">
@@ -296,7 +315,7 @@
                        <div class="mini-conductor mini-pin5"></div>
                        <div class="mini-conductor mini-pin7"></div>
                        <div class="mini-conductor mini-pin8"></div>
-                   </div>
+                </div>
                    <div class="media-converter" id="mcA">MC A
                        <div class="interface tiny" id="if_copper_mc_A"><div>Copper PHY</div><div class="detail"></div></div>
                        <div class="interface tiny" id="if_mc_sfp_A"><div>20-pin SFP MSA</div><div class="detail"></div></div>
