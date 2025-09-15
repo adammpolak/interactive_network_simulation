@@ -663,6 +663,22 @@ const scenarioLibrary = {
         for (const r of b) { if (a.has(r)) return r; }
         return null;
     };
+    // Shared: Detailed SFP A insertion substeps (used by fiber and breakout scenarios)
+    const sfpAInsertSubSteps = [
+        "<b>Physical detect:</b> Module latches in cage; <i>MOD_DEF0</i> is grounded by the module → presence detected by MC A.",
+        "<b>Power:</b> MC A supplies 3.3V to SFP A (VccR/VccT) and waits for module power‑good.",
+        "<b>I2C roles:</b> MC A is the <i>master</i>; SFP A is the <i>slave</i> at 7‑bit addresses 0x50 (A0h) and 0x51 (A2h).",
+        "<b>Identity read (A0h @ 0x50):</b>",
+        "<ul><li>Sequence: START → 0xA0 (W) → OFFSET 0x00 → RE‑START → 0xA1 (R) → READ 16+ bytes → STOP.</li><li>Key fields (per MSA): Byte 0 Identifier, 2 Connector, 3‑10 Transceiver caps, 11 Encoding, 12 BR_nom, 20‑35 Vendor Name, 37‑39 OUI, 40‑55 Part Number, 56‑59 Rev, 60‑61 Wavelength (e.g., 850 nm), 68‑83 Serial Number.</li><li><b>Where stored:</b> In the module’s on‑module non‑volatile EEPROM (hardware). Not in the OS. MC A may cache a copy in RAM for policy decisions.</li></ul>",
+        "<b>Diagnostics capability (A2h @ 0x51):</b> If supported, exposes real‑time DOM (Temp, Vcc, TX bias, TX/RX power) and alarm thresholds.",
+        "<b>Rate & mode determination:</b>",
+        "<ul><li>MC A parses Transceiver/Encoding/BR_nominal to classify optical side (e.g., 1000BASE‑SX vs 100BASE‑FX).</li><li>For dual‑rate modules, <i>RATE_SELECT</i> pin/fields indicate selectable 100/1000 modes.</li></ul>",
+        "<b>Laser safety defaults:</b> <i>TX_DISABLE</i> is HIGH by default (laser OFF). MC A keeps TX disabled until its policy allows (e.g., after copper up).</li>",
+        "<b>Clause 37 awareness:</b> If 1000BASE‑X is selected, the optical SERDES will later emit 8B/10B Idle/Config code‑groups once TX is enabled to maintain link timing at the far end.",
+        "<b>OS state on A:</b> Still no carrier at Host A; copper not connected. All activity here is inside MC A and SFP A (hardware) and not visible to the host OS yet.",
+        "<b>Data residency summary:</b>",
+        "<ul><li><b>Persistent:</b> Module ID/DOM in SFP EEPROM (A0h/A2h).</li><li><b>Volatile (MC):</b> Parsed capabilities cached in MC A controller RAM and/or registers to drive policy (rate select, TX enable).</li><li><b>Volatile (PHY):</b> Any negotiated state later (copper/optical) lives in PHY registers, not in EEPROM.</li></ul>"
+    ];
     const commonDisconnected = [
         { log: { title: 'State: Disconnected.', subSteps: ["No physical connection is established.","The NIC's PHY transceiver cannot detect any electrical signals."] } },
         { log: { title: 'PHY reports link DOWN.', subSteps: ["<b>This is an event, not a constant report.</b> When a cable is unplugged, the PHY detects a loss of signal.","This state change triggers a single hardware interrupt (IRQ) to notify the OS that the link is now down.","The OS network driver handles the interrupt and marks the interface state as 'NO CARRIER' or 'disconnected'. The PHY does not need to report again until a signal is re-detected."]}, highlights:['A.phy', 'B.phy'] },
@@ -788,7 +804,7 @@ const scenarioLibrary = {
         ],
         // Scene 2: SFP A inserted first (before copper)
         [
-            { log: { title: 'SFP A Inserted (before copper).', subSteps: ["SFP A is inserted into Media Converter A.", "<b>I2C Read:</b> MC A reads SFP A EEPROM via I2C (MSA).", "<b>OS State on A:</b> Still no carrier; Host A copper not connected yet.", "<b>MC Behavior:</b> Optical TX usually remains disabled until copper side is up (policy-dependent)."] }, highlights: ['A.mc'] , action: async () => { await highlightSequenceByIds([ { id: 'if_mc_sfp_A', detail: 'I2C: EEPROM read (MSA)' }, { id: 'sfpA' } ], 220); active(document.getElementById('mcA'), true); } }
+            { log: { title: 'SFP A Inserted (before copper).', subSteps: sfpAInsertSubSteps }, highlights: ['A.mc'] , action: async () => { await highlightSequenceByIds([ { id: 'if_mc_sfp_A', detail: 'I2C: EEPROM read (MSA)' }, { id: 'sfpA' } ], 220); active(document.getElementById('mcA'), true); } }
         ],
         // Scene 3: Copper Link Handshake (Host A ↔ MC A)
         [
@@ -850,7 +866,7 @@ const scenarioLibrary = {
             { log: { title: 'Media Converter A Powered On.', subSteps: ["MC A is powered.", "Copper PHY idle; optical TX disabled until copper up or policy allows."] }, highlights: ['A.mc'] }
         ],
         [
-            { log: { title: 'SFP A Inserted in MC A.', subSteps: ["MC A reads SFP A via I2C (MSA) to learn supported rates."] }, highlights: ['A.if_mc_sfp','A.sfp'] }
+            { log: { title: 'SFP A Inserted in MC A.', subSteps: sfpAInsertSubSteps }, highlights: ['A.if_mc_sfp','A.sfp'] }
         ],
         [
             { log: { title: 'Host A ↔ MC A Copper Negotiation.', subSteps: [
@@ -860,17 +876,38 @@ const scenarioLibrary = {
                 "<b>Effect of SFP rate:</b> If SFP A later restricts optical to 100BASE‑FX, MC A may <i>drop</i> copper and re‑advertise 10/100 to downshift (see later steps)."
             ] }, highlights: ['A.phy','A.mc'], action: async () => { animateVoltages(true); await sleep(600); animateVoltages(false); } }
         ],
-        // Scene 4 – B-side: SFP breakout only
+        // Scene 4 – A-side optical behavior after copper up
+        [
+            { log: { title: 'MC A enables SFP A Optical Transmit.', subSteps: [
+                "<b>Why does light leave SFP A?</b>",
+                "<ul><li><b>Who triggers TX?</b> <i>The media converter</i> controls the SFP via the MSA pins. When copper link A↔MC A is UP, MC A (not the NIC) drives the SFP’s <i>TX_DISABLE</i> pin LOW to enable the optical transmitter.</li><li><b>Why does it transmit Idles?</b> The 1000BASE‑X PHY inside the media converter’s SERDES continuously emits 8B/10B <i>Idle/Configuration</i> ordered sets to keep the far‑end CDR locked and to advertise configuration if Clause 37 autoneg is used.</li><li><b>No remote required:</b> These Idles originate locally once TX is enabled; a receiver on the far end is not required for transmission to occur.</li></ul>",
+                "<b>Is the NIC sending packets?</b>",
+                "<ul><li><b>NIC perspective:</b> Host A’s NIC sees copper link UP to MC A, so the OS may transmit frames (DHCP, ARP, etc.) even if the optical side isn’t linked yet.</li><li><b>Forwarding model:</b> A simple media converter is Layer‑1. It does not buffer or inspect frames; it retimes and translates symbols one‑for‑one from GMII↔1000BASE‑T to 1000BASE‑X.</li><li><b>If fiber is disconnected or no partner:</b> Frames are still serialized onto the optical TX (if TX is enabled), but with no receiver they are simply not received by anyone—effectively lost. There is no acknowledgment at L1.</li><li><b>If TX remains disabled by policy:</b> Some MCs keep TX disabled until RX_LOS is LOW; in that case only copper is up and no frames reach fiber. Our step uses <i>propagate carrier</i> policy (enable TX after copper).</li></ul>",
+                "<b>Do pulses terminate at MC A?</b>",
+                "<ul><li><b>No store‑and‑forward:</b> The MC does not terminate packets. It converts electrical symbols to optical code‑groups in real time.</li><li><b>Where they go:</b> If fiber is present, Idles (and any data) leave via SFP A TX into the fiber. If fiber is absent, enabling TX has no optical path; many MCs keep TX disabled in that case.</li></ul>",
+                "<b>What exactly is on the fiber?</b>",
+                "<ul><li>Continuous 1.25 GBd serial stream (8B/10B encoded) carrying /I/ (Idle) and, if autoneg in use, /C/ (Config) ordered sets (IEEE 802.3 Clause 37).</li><li>When frames are present, data code‑groups replace idles; otherwise idles resume.</li></ul>",
+                "<b>Interfaces affected:</b>",
+                "<ul><li>MC↔SFP MSA: MC A drives <i>TX_DISABLE</i> → LOW (enable); <i>TX_FAULT</i> remains de‑asserted (HIGH).</li><li>Optical TX path becomes active; fiber carries idle light modulation toward the right.</li></ul>"
+            ] }, highlights: ['A.if_mc_sfp','A.sfp'], action: async () => { await (async () => { const seq = [ { id: 'if_mc_sfp_A', detail: 'MSA: TX_DISABLE=LOW (enable TX)' }, { id: 'sfpA' }, { id: 'if_sfp_fiber_A', detail: 'Optical TX: 8B/10B Idle stream' } ]; for (const step of seq){ const el=document.getElementById(step.id); if(el){ el.classList.add('active'); if(el.classList.contains('interface')&&step.detail) el.querySelector('.detail').textContent = step.detail; } await new Promise(r=>setTimeout(r,180/state.speedFactor)); } })(); } }
+        ],
+        // Scene 5 – B-side: SFP breakout only
         [
             { log: { title: 'SFP Breakout Board Powered (B side).', subSteps: [
                 "<b>Power rails:</b> Vcc (3.3V) stable; measure ~3.30V at VCC pins (per MSA).",
+                "<ul><li><b>Pins:</b> VccR = pin 14, VccT = pin 15; grounds: VeeR/VeeT on pins 1,9,10,11,16,19,20.</li><li><b>Why 3.3V?</b> SFP MSA specifies 3.3V rails for module logic and optics.</li><li><b>Ripple tolerance:</b> Keep ripple small (≈ <50 mV p‑p). Excess ripple can either trip TX_FAULT or degrade RX sensitivity.</li></ul>",
                 "<b>Pull-ups:</b> SDA/SCL have ~2.2–10k pull-ups to 3.3V on the breakout; expect ~3.3V idle on both lines.",
+                "<ul><li><b>Open‑drain bus:</b> Devices only pull LOW; resistors pull HIGH. This allows multiple devices to share SDA/SCL.</li><li><b>Idle level:</b> SDA=HIGH, SCL=HIGH at rest.</li><li><b>Probe note:</b> Use high‑impedance LA probes; do not drive the lines.</li></ul>",
                 "<b>Status pins (no module yet):</b>",
-                "<ul><li>MOD_DEF0 (pin 6) HIGH (no module grounds it).</li><li>TX_DISABLE (pin 3) HIGH by pull-up ≈ 3.3V.</li><li>TX_FAULT (pin 2) HIGH (open drain, pulled up).</li><li>RX_LOS (pin 8) HIGH (no light / no module).</li></ul>",
+                "<ul><li><b>MOD_DEF0 (6):</b> HIGH (no ground) → indicates <i>no module present</i>.</li><li><b>TX_DISABLE (3):</b> HIGH ≈ 3.3V (laser OFF by default).</li><li><b>TX_FAULT (2):</b> HIGH via pull‑up (open‑drain) → idle/high when not faulting.</li><li><b>RX_LOS (8):</b> HIGH (no light).</li></ul>",
                 "<b>LEDs (if provided):</b> Power LED ON, TX/RX status LEDs off.",
+                "<ul><li>Power LED tracks the 3.3V rail; TX/RX LEDs are vendor‑specific and may mirror TX_ENABLE and RX_LOS.</li></ul>",
                 "<b>No host copper on B:</b> There is no NIC B; this board exposes pins for measurement only.",
-                "<b>Where to probe (DMM):</b>",
-                "<ul><li>Black probe to any VeeR/VeeT (pins 1,9,10,11,16,19,20 = GND).</li><li>Red probe to VccR (14) or VccT (15): ~3.30V.</li><li>Red probe to SDA (4) / SCL (5): ~3.30V idle.</li><li>Red probe to TX_DISABLE (3), TX_FAULT (2), RX_LOS (8): ~3.30V idle.</li></ul>"
+                "<ul><li><b>Implication:</b> You can observe optics/I2C but no Ethernet frames are decoded/forwarded.</li><li><b>Safety:</b> Do not force TX on; follow laser safety.</li></ul>",
+                "<b>I2C primer (master/slave & transactions):</b>",
+                "<ul><li><b>Master:</b> Media converter/host generates SCL and START/STOP.</li><li><b>Slave:</b> SFP module at 7‑bit addresses 0x50 (A0h) and 0x51 (A2h).</li><li><b>Start:</b> SDA↓ while SCL HIGH; <b>Stop:</b> SDA↑ while SCL HIGH.</li><li><b>ACK/NACK:</b> Receiver pulls SDA LOW on the 9th clock; master NACKs last byte of a read.</li><li><b>Clock stretching:</b> Slave can hold SCL LOW to pause the master when needed.</li></ul>",
+                "<b>Where to probe (DMM/LA):</b>",
+                "<ul><li><b>DMM ground:</b> Any Vee pin (1,9,10,11,16,19,20).</li><li><b>Vcc:</b> VccR (14)/VccT (15) ≈ 3.30V.</li><li><b>Logic idle:</b> SDA (4) ≈ 3.3V, SCL (5) ≈ 3.3V.</li><li><b>Status idle:</b> TX_DISABLE (3) ≈ 3.3V, TX_FAULT (2) ≈ 3.3V, RX_LOS (8) ≈ 3.3V.</li><li><b>LA hookup:</b> SCL→5, SDA→4, GND→Vee; expect ~100 kHz, START/STOP semantics.</li></ul>"
             ] }, highlights: [], action: () => {
                 ensureBreakoutPanel(); resetBreakoutValues(); setBreakoutStatus('Powered', 'warn');
                 setPinVoltage(14, 3.30, '(VccR)'); setPinVoltage(15, 3.30, '(VccT)');
@@ -885,8 +922,8 @@ const scenarioLibrary = {
         [
             { log: { title: 'Insert SFP B into Breakout.', subSteps: [
                 "<b>Presence detect:</b> MOD_DEF0 (pin 6) is grounded by the module → logic LOW (0V).",
-                "<b>I2C access (exact waveforms):</b>",
-                "<ul><li>7-bit device address: A0h page = 0x50 (8-bit write=0xA0, read=0xA1).</li><li>Bus speed 100 kHz: observe square waves on SCL; SDA transitions on SCL low.</li><li>Transaction format:</li><ul><li>START → 0xA0 (W) → OFFSET 0x00 → RE-START → 0xA1 (R) → READ N bytes → STOP</li></ul></ul>",
+                "<b>I2C access (what/why/how):</b>",
+                "<ul><li><b>Why I2C?</b> The SFP MSA defines an EEPROM (A0h) and optional diagnostics (A2h) readable over I2C so hosts can learn module type, speed, wavelength and telemetry. This is standard behavior for SFP/SFP+.</li><li><b>Master/slave:</b> MC or host is the I2C master; the SFP module is the slave.</li><li><b>7‑bit addressing:</b> A0h page is 0x50 (8‑bit write 0xA0, read 0xA1). Reads require setting an internal offset pointer first.</li><li><b>Timing:</b> 100 kHz; SDA changes only when SCL is LOW.</li><li><b>Sequence (read ID):</b> START → 0xA0 (W) → OFFSET 0x00 → RE‑START → 0xA1 (R) → READ N bytes → STOP.</li><li><b>Motivation:</b> Safely determine capabilities before enabling lasers or advertising copper rates.</li></ul>",
                 "<b>Default states:</b> TX_DISABLE HIGH (~3.3V), TX laser inhibited; TX_FAULT HIGH; RX_LOS HIGH (no optical input).",
                 "<b>Where to probe:</b>",
                 "<ul><li>Logic analyzer: SCL to pin 5, SDA to pin 4, GND to any Vee pin.</li><li>DMM: MOD_DEF0 pin 6 ≈ 0V (present), TX_DISABLE pin 3 ≈ 3.3V, RX_LOS pin 8 ≈ 3.3V.</li></ul>"
@@ -906,10 +943,11 @@ const scenarioLibrary = {
         [
             { log: { title: 'Connect Fiber A (MC A) → B (Breakout).', subSteps: [
                 "<b>Optical path:</b> Light from SFP A arrives at SFP B’s receiver.",
+                "<ul><li><b>Source of light:</b> MC A enabled SFP A TX after copper came up; 1000BASE‑X continuously transmits 8B/10B Idles even without user traffic, so a modulated optical signal is present.</li><li><b>No remote dependency:</b> The idle stream is generated locally; it does not require SFP B to be linked.</li></ul>",
                 "<b>RX_LOS de-asserts:</b> When optical power exceeds threshold, RX_LOS transitions LOW (~0V); verify with DMM/scope on RX_LOS pin.",
                 "<b>TX path (receive-only demo):</b> TX_DISABLE remains HIGH (~3.3V), so TX laser stays off; TX_FAULT remains HIGH.",
-                "<b>I2C DOM read (exact):</b>",
-                "<ul><li>7-bit device address: A2h page = 0x51 (8-bit write=0xA2, read=0xA3).</li><li>Read diagnostics (SFF-8472): offsets 0x60..0x69 (Temp/Vcc/TxBias/TxPwr/RxPwr).</li><li>Sequence: START → 0xA2 (W) → 0x60 → RE-START → 0xA3 (R) → READ 0x0A → STOP</li></ul>",
+                "<b>I2C DOM read (what/why/how):</b>",
+                "<ul><li><b>Why now?</b> With light present, diagnostics verify receiver signal and module health for UI/state decisions.</li><li><b>7‑bit address:</b> A2h page at 0x51 (8‑bit 0xA2/0xA3).</li><li><b>Offsets:</b> 0x60..0x69 → Temp/Vcc/TxBias/TxPwr/RxPwr (SFF‑8472 big‑endian fixed‑point).</li><li><b>Sequence:</b> START → 0xA2 (W) → 0x60 → RE‑START → 0xA3 (R) → READ 0x0A → STOP.</li><li><b>Motivation:</b> Show live optics telemetry; MCs often gate TX enable based on RX power validity.</li></ul>",
                 "<b>Where to probe:</b>",
                 "<ul><li>DMM: RX_LOS pin 8 ≈ 0V when light present.</li><li>LA: decode DOM read on pins 4/5; confirm addresses 0xA2/0xA3 and offset 0x60.</li></ul>",
                 "<b>No Ethernet forwarding:</b> This board is not a MAC/PHY; it exposes electrical/I2C signals only."
@@ -926,13 +964,31 @@ const scenarioLibrary = {
         ],
         [
             { log: { title: 'Engineer Checklist (B Breakout).', subSteps: [
-                "VCC ≈ 3.3V steady.",
-                "SDA/SCL idle ≈ 3.3V; 100 kHz transactions visible when reading A0h/A2h.",
-                "RX_LOS: HIGH without light, LOW with light present.",
-                "TX_DISABLE: HIGH by default (laser disabled).",
-                "TX_FAULT: Typically HIGH idle; stays HIGH while TX disabled.",
-                "MOD_DEF0: grounded to indicate presence."
-            ] } }
+                "<b>Final link state on breakout:</b>",
+                "<ul><li><b>Optical RX:</b> With fiber from MC A connected and light present, <i>RX_LOS</i> is LOW (0V). The module’s RX path is active and will see optical modulation whenever Host A sends traffic.</li><li><b>No forwarding:</b> This breakout is not a MAC/PHY. RD+/RD− carry high‑speed differential data from the photodiode/TIA/limiting amp, but nothing is decoded or forwarded electrically.</li><li><b>TX held off:</b> <i>TX_DISABLE</i> remains HIGH (~3.3V) so the laser stays off; <i>TX_FAULT</i> remains HIGH (idle).</li></ul>",
+                "<b>Voltages to expect (steady):</b>",
+                "<ul><li>VccR (14) ≈ 3.30V, VccT (15) ≈ 3.30V.</li><li>SDA (4) ≈ 3.3V, SCL (5) ≈ 3.3V idle (pulled up).</li><li>MOD_DEF0 (6) ≈ 0V (module present).</li><li>TX_DISABLE (3) ≈ 3.3V; TX_FAULT (2) ≈ 3.3V; RX_LOS (8) ≈ 0V with light.</li><li>RD+/RD− (13/12): AC‑coupled high‑speed signal; not DC measurable with a DMM.</li></ul>",
+                "<b>I2C behavior at rest:</b>",
+                "<ul><li>I2C is <i>not</i> continuously active by default. After reads (A0h/A2h), the bus idles HIGH on SDA/SCL.</li><li>Systems may poll A2h periodically (e.g., 1 Hz) for DOM updates; in this demo, reads occur only when the step triggers them.</li></ul>",
+                "<b>Incoming data from Host A?</b>",
+                "<ul><li>Yes, whenever Host A transmits frames, optical modulation is present on the fiber. You will observe activity as high‑speed transitions on RD+/RD−, while logic pins remain as above.</li></ul>"
+            ] }, action: () => {
+                // Final explicit UI state
+                ensureBreakoutPanel();
+                // Maintain existing grid and fill final values
+                setBreakoutStatus('RX active; TX disabled', 'ok');
+                setPinVoltage(14, 3.30, '(VccR)'); setPinVoltage(15, 3.30, '(VccT)');
+                setPinDigital(4, true, '(SDA idle)'); setPinDigital(5, true, '(SCL idle)');
+                setPinDigital(6, false, '(PRESENT)');
+                setPinDigital(3, true, '(TX_DISABLE HIGH)'); setPinDigital(2, true, '(TX_FAULT HIGH)');
+                setPinDigital(8, false, '(RX_LOS LOW)');
+                // Mini breakout summary in the inline fiber view box
+                const pins = document.getElementById('breakoutPins');
+                if (pins) pins.innerHTML = '<div><b>Power:</b> VCC ≈ 3.30V</div>'+
+                    '<div><b>I2C:</b> idle (SDA/SCL ≈ 3.3V); reads occur on demand</div>'+
+                    '<div><b>Status:</b> RX_LOS ≈ 0V (light), TX_DISABLE ≈ 3.3V (TX off), TX_FAULT ≈ 3.3V</div>';
+                setMeasureGuide("Final: DMM → pins 14/15 ≈3.30V; pin8 ≈0V with light; pins 4/5 ≈3.3V idle. LA optional if polling is enabled.");
+            } }
         ]
     ];
 })(scenarioLibrary);

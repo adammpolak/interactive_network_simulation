@@ -89,4 +89,45 @@ Where to Look in Code
 - Scenario steps: scenarioLibrary population block in index.html.
 - UI / DOM bindings and helpers: index.html script top.
 
+## Breakout Panel and Scenario 4 (Fiber → SFP Breakout)
+
+### What it is
+- A dedicated UI beneath the log that shows:
+  - Breakout: SFP 20‑pin (MSA) Live Map (two pin banks: Control/I2C/Status and Power/Grounds/High‑speed) with live voltages/logic levels
+  - I2C Activity monitor (decoded text) and a scope‑like timing display for SCL/SDA
+  - Measurement guide with exact probe points for DMM/logic analyzer
+
+### How it behaves
+- The panel is visible only in the `fiber_breakout` scenario and persists across steps (forward/back). The structure remains fixed; values update per step.
+- Pin values are set via helpers that update the live map without rerendering the whole panel.
+- The I2C monitor renders high‑level bus events; the scope draws simplified timing (START/RE‑START/STOP, addresses, bits, ACKs, and data bursts).
+
+### Why I2C here (SFP MSA)
+- SFP modules expose two I2C pages:
+  - A0h (address 0x50): ID EEPROM (module type, wavelength, vendor, speed support)
+  - A2h (address 0x51): Diagnostics (SFF‑8472: temperature, Vcc, Tx bias, Tx power, Rx power)
+- Hosts (NICs/switches/media converters) act as I2C masters to read these pages to safely discover capabilities and telemetry before enabling lasers or advertising copper rates.
+- Standard I2C read sequence used:
+  - A0h read (example): START → 0xA0 (W) → OFFSET 0x00 → RE‑START → 0xA1 (R) → READ N → STOP
+  - A2h DOM read (example): START → 0xA2 (W) → 0x60 → RE‑START → 0xA3 (R) → READ 0x0A → STOP
+
+### Measurement guidance
+- DMM: COM to any Vee pin; measure VccR (14) and VccT (15) ≈ 3.30V. Status pins: TX_DISABLE (3), TX_FAULT (2), RX_LOS (8) ≈ 3.3V idle; MOD_DEF0 (6) ≈ 0V when module present.
+- Logic Analyzer: SCL (pin 5), SDA (pin 4), GND (any Vee). Expect ~100 kHz clock; SDA transitions on SCL LOW.
+
+### Authoring notes
+- Panel state API:
+  - `ensureBreakoutPanel()` ensures visibility and structure
+  - `initBreakoutPinGrid()` builds the pin banks (idempotent)
+  - `resetBreakoutValues()` clears values but preserves structure
+  - `setPinVoltage(pin, volts, label)` / `setPinDigital(pin, high, label)` update a single cell
+  - `appendI2C(text)` logs a bus event; `i2cReadSeq7bit(addr7, offset, len)` simulates a full read and draws the scope
+- Navigation:
+  - `prev()` rebuilds the log and replays actions; the panel stays rendered and repopulates accordingly
+
+### Scenario 4 step highlights
+- Power only: show pull‑ups (SDA/SCL ~3.3V), status pins HIGH, no module present
+- Module inserted: MOD_DEF0 LOW, I2C A0h read of ID bytes, TX disabled
+- Fiber connected: RX_LOS LOW, optional I2C A2h DOM read of optics telemetry
+
 
