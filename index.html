@@ -1,0 +1,831 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Network Simulation: The Journey of a Ping</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #f3f4f6; --panel: #ffffff; --panel-2: #f9fafb; --ink: #111827; --muted: #4b5563;
+            --accent: #4f46e5; --accent-2: #10b981; --warn: #f59e0b; --bad: #ef4444; --good: #22c55e;
+            --cable: #9ca3af; --glow: 0 0 12px rgba(79, 70, 229, 0.4); --radius: 1rem; --radius-sm: 0.75rem; --gap: 10px;
+        }
+        body { font-family: 'Inter', sans-serif; background-color: var(--bg); color: var(--ink); }
+        .mono { font-family: 'Fira Code', monospace; }
+
+        .top-container { display: grid; grid-template-columns: 1fr auto 1fr; gap: 20px; align-items: stretch; max-width: 1400px; margin: 0 auto; padding: 1rem; }
+        .host { background: linear-gradient(180deg, var(--panel), var(--panel-2)); border: 1px solid #d1d5db; border-radius: var(--radius); padding: var(--gap); display: grid; gap: var(--gap); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+        .host h2 { margin: 0 0 4px; font-size: 18px; font-weight: 700; }
+        .kvs { display: grid; grid-template-columns: max-content 1fr; gap: 4px 10px; font-size: 12px; }
+        .kvs .k { color: var(--muted); }
+        .layer { border-radius: var(--radius-sm); padding: 10px; border: 1px solid #e5e7eb; background: #f9fafb; transition: all 0.3s ease; }
+        .layer h3 { margin: 0 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent); }
+        .layer.active { border-color: var(--accent); box-shadow: var(--glow); }
+        .interface { height: 36px; border: 1px dashed #cbd5e1; border-radius: 6px; background-color: #f1f5f9; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; transition: all 0.3s ease; text-align: center; padding: 2px; }
+        .interface .detail { font-size: 9px; text-transform: none; font-style: italic; }
+        .interface.active { border-style: solid; border-color: var(--warn); background-color: #fffbeb; color: #b45309; box-shadow: 0 0 8px rgba(245, 158, 11, 0.4); }
+        
+        .controls-container { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 12px; }
+        .controls { display: flex; flex-direction: column; gap: 10px; align-items: center; background: var(--panel); padding: 1rem; border-radius: var(--radius); border: 1px solid #d1d5db; }
+        .btns { display: flex; gap: 8px; }
+        button { background: #e5e7eb; color: var(--ink); border: 1px solid #d1d5db; border-radius: 0.5rem; padding: 8px 12px; cursor: pointer; transition: background-color 0.2s; }
+        button:hover { background: #d1d5db; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .toggle, .scenario-select { display: flex; gap: 6px; align-items: center; font-size: 13px; color: var(--muted); width: 100%; justify-content: space-between;}
+        select { border-radius: 0.375rem; border-color: #d1d5db; }
+
+        .timeline { width: 100%; height: 8px; background: #e5e7eb; border: 1px solid #d1d5db; border-radius: 999px; overflow: hidden; }
+        .progress { height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); transition: width 0.3s linear; }
+
+        .connection-container { max-width: 1400px; margin: 0 auto; padding: 1rem; background: var(--panel); border-radius: var(--radius); border: 1px solid #d1d5db; }
+        .cable-wrap { position: relative; border-radius: var(--radius); border: 1px solid #d1d5db; background: #f9fafb; overflow: hidden; display: flex; flex-direction: column; min-height: 120px; }
+        .port-row { flex-shrink: 0; text-align: center; padding: 4px 10px; color: var(--muted); font-size: 12px; }
+        .cable { position: relative; flex-grow: 1; background: #e5e7eb; display: flex; justify-content: space-around; padding: 2% 0; }
+        .cable.twisted-pair-view { flex-direction: column; gap: 6px; padding: 8px 0; }
+        .wire-conductor { position: relative; left: 2%; right: 2%; width: 96%; height: 3px; }
+        .wire-conductor:before { content: attr(data-pin); position: absolute; left: -16px; top: -6px; font-size: 10px; color: var(--muted); }
+        .wire-conductor:after { content: attr(data-pin); position: absolute; right: -16px; top: -6px; font-size: 10px; color: var(--muted); }
+        .wire-conductor > .track { position: absolute; left: 0; top: 0; width: 100%; height: 100%; border-radius: 99px; background: var(--cable); }
+        .wire-conductor.inactive > .track { background: #d1d5db; }
+        .wire-conductor > .activity { position: absolute; left: 0; top: 0; width: 100%; height: 100%; border-radius: 99px; background: var(--good); opacity: 0; }
+        .packet { position: absolute; top: 50%; transform: translate(-50%, -50%); padding: 4px 8px; border-radius: 999px; font-size: 11px; white-space: nowrap; color: white; animation-timing-function: linear; }
+        .pulse { background-color: #6366f1; border: 1px solid #4338ca; }
+        .packet.frame { background-color: var(--good); border: 1px solid #059669; }
+        .packet.warn { background-color: var(--warn); border-color: #d97706; }
+        .packet.bad { background-color: var(--bad); border-color: #b91c1c; }
+        @keyframes fly-right { from { left: 2%; } to { left: 98%; } }
+        @keyframes fly-left { from { left: 98%; } to { left: 2%; } }
+        
+        .log-container { max-width: 1400px; margin: 1rem auto; }
+        #simulation-log { height: 20rem; overflow-y: auto; scroll-behavior: smooth; background: #1f2937; color: #e5e7eb; border-radius: var(--radius-sm); padding: 0.75rem; }
+        #simulation-log details { margin-bottom: 0.5rem; }
+        #simulation-log summary { cursor: pointer; }
+        #simulation-log ul { margin-left: 1.5rem; margin-top: 0.25rem; list-style: disc; color: #9ca3af; }
+        #simulation-log ul ul { list-style-type: circle; margin-left: 1.5rem; }
+
+        /* Fiber Scenario Specific Styles */
+        .fiber-view { align-items: center; justify-content: space-between; height: 100%; padding: 2% 0; gap: 12px; }
+        .media-converter { background: #e0e7ff; border: 1px solid #a5b4fc; padding: 8px; border-radius: 8px; text-align: center; font-size: 12px; position: relative; }
+        .media-converter.active { border-color: var(--accent); box-shadow: var(--glow); }
+        .sfp-slot { background: #4b5563; color: white; padding: 4px 6px; margin-top: 4px; border-radius: 4px; font-size: 10px; }
+        .fiber-cable { flex-grow: 1; height: 4px; background: #facc15; margin: 0 10px; position: relative; }
+        .copper-jumper { width: 10%; height: 4px; background: var(--cable); }
+        .copper-stub { width: 12%; display: flex; flex-direction: column; justify-content: space-around; padding: 6px 0; }
+        .copper-run { width: 16%; min-width: 90px; height: 56px; display: flex; flex-direction: column; justify-content: space-around; padding: 6px 0; }
+        .copper-stub .mini-conductor, .copper-run .mini-conductor { position: relative; width: 100%; height: 3px; border-radius: 99px; }
+
+        /* T568B 8 conductors - direct color on track element */
+        .pin1 > .track { background: #fed7aa !important; } /* white/orange */
+        .pin2 > .track { background: #f97316 !important; } /* orange */
+        .pin3 > .track { background: #bbf7d0 !important; } /* white/green */
+        .pin6 > .track { background: #22c55e !important; } /* green */
+        .pin4 > .track { background: #93c5fd !important; } /* blue */
+        .pin5 > .track { background: #dbeafe !important; } /* white/blue */
+        .pin7 > .track { background: #fde68a !important; } /* white/brown */
+        .pin8 > .track { background: #92400e !important; } /* brown */
+
+        /* Mini conductor colors for fiber view copper runs */
+        .mini-pin1 { background: #fed7aa; } /* white/orange */
+        .mini-pin2 { background: #f97316; } /* orange */
+        .mini-pin3 { background: #bbf7d0; } /* white/green */
+        .mini-pin6 { background: #22c55e; } /* green */
+        .mini-pin4 { background: #93c5fd; } /* blue */
+        .mini-pin5 { background: #dbeafe; } /* white/blue */
+        .mini-pin7 { background: #fde68a; } /* white/brown */
+        .mini-pin8 { background: #92400e; } /* brown */
+
+        /* Smaller interface variants for compact areas */
+        .interface.small { height: 28px; font-size: 9px; }
+        .interface.tiny { height: 22px; font-size: 9px; }
+        .light-pulse { position: absolute; width: 20px; height: 100%; background: white; border-radius: 99px; box-shadow: 0 0 8px white; opacity: 0; }
+        @keyframes pulse-right { from { left: 0; opacity: 1; } to { left: calc(100% - 20px); opacity: 1; } }
+
+    </style>
+</head>
+<body class="p-4">
+
+    <header class="text-center mb-4">
+        <h1 class="text-3xl font-bold">The Journey of a Ping</h1>
+        <p class="text-lg text-gray-600" id="stateLabel">State: Disconnected</p>
+    </header>
+
+    <main class="top-container">
+        <!-- LEFT HOST: Windows -->
+        <section class="host" id="hostA">
+            <h2>Host A (Windows)</h2>
+            <div class="layer" id="appA"><h3>Application</h3><div class="kvs"><div class="k">Process:</div><div id="appA_proc">idle</div><div class="k">Action:</div><div id="appA_action">—</div></div></div>
+            <div class="interface" id="if_app_ip_A"><div>Sockets API</div><div class="detail"></div></div>
+            <div class="layer" id="ipA">
+                <h3>IP Stack (OS Kernel)</h3>
+                <div class="kvs">
+                    <div class="k">IPv4:</div><div id="ipA_addr" class="mono">(none)</div><div class="k">Subnet:</div><div id="ipA_subnet" class="mono">(none)</div>
+                    <div class="k">Route:</div><div id="ipA_route" class="mono">(no route)</div><div class="k">ARP:</div><div id="ipA_arp" class="mono">(empty)</div>
+                    <div class="k">Firewall:</div><div id="ipA_fw" class="mono">BLOCKED</div>
+                </div>
+            </div>
+            <div class="interface" id="if_ip_mac_A"><div>DMA / IRQs</div><div class="detail"></div></div>
+            <div class="layer" id="macA"><h3>NIC (MAC Controller)</h3><div class="kvs"><div class="k">MAC:</div><div id="macA_addr" class="mono">AA:..:AA</div><div class="k">TX/RX:</div><div id="macA_tr" class="mono">idle</div></div></div>
+            <div class="interface" id="if_mac_phy_A"><div>GMII</div><div class="detail"></div></div>
+            <div class="layer" id="phyA"><h3>PHY (Physical)</h3><div class="kvs"><div class="k">Link:</div><div id="phyA_link" class="mono">DOWN</div><div class="k">Negotiation:</div><div id="phyA_neg" class="mono">—</div><div class="k">Speed:</div><div id="phyA_speed" class="mono">—</div></div></div>
+        </section>
+
+        <!-- MIDDLE: Controls -->
+        <section class="controls-container">
+            <div class="controls">
+                <div class="scenario-select">
+                    <label for="scenario-select">Scenario:</label>
+                    <select id="scenario-select">
+                        <option value="direct_1000baseT">Direct 1Gbps Copper</option>
+                        <option value="direct_100baseTX">Direct 100Mbps Copper</option>
+                        <option value="fiber_1000baseSX">Fiber (1Gbps SX)</option>
+                    </select>
+                </div>
+                <div class="btns"><button id="prev">◀</button><button id="play">▶</button><button id="pause" disabled>⏸</button><button id="next">▶</button><button id="reset">↺</button></div>
+                <div class="toggle"><label><input type="checkbox" id="toggleFirewall" checked> Sim Firewall</label></div>
+                <div class="toggle">Speed <input type="range" id="speed" min="0.25" max="2.0" value="1" step="0.25"> <span id="speedVal" class="mono">1.00×</span></div>
+                 <div class="timeline"><div id="progress" class="progress"></div></div>
+            </div>
+            <div class="controls mt-2">
+                <div class="text-sm font-semibold">Hardware Profiles (independent of scenario)</div>
+                <div class="kvs" style="grid-template-columns: max-content 1fr; gap: 6px 10px; font-size: 12px;">
+                    <div>Host A NIC</div>
+                    <select id="nicA_caps">
+                        <option value="10,100,1000">10/100/1000BASE-T</option>
+                        <option value="1000">1000BASE-T only</option>
+                        <option value="1000,2500,5000">NBASE-T (1/2.5/5G)</option>
+                    </select>
+                    <div>MC A Copper PHY</div>
+                    <select id="mcA_copper_caps">
+                        <option value="10,100,1000">10/100/1000BASE-T</option>
+                        <option value="10,100">10/100BASE-TX</option>
+                        <option value="1000,2500,5000">NBASE-T (1/2.5/5G)</option>
+                    </select>
+                    <div>MC A SFP Slot</div>
+                    <select id="mcA_sfp_caps">
+                        <option value="1000">1000BASE-X only</option>
+                        <option value="100">100BASE-FX only</option>
+                        <option value="100,1000">Dual-rate 100/1000 (RATE_SELECT)</option>
+                        <option value="2500">2.5GBASE-X</option>
+                    </select>
+                    <div>SFP A Module</div>
+                    <select id="sfpA_caps">
+                        <option value="1000">1000BASE-SX</option>
+                        <option value="100">100BASE-FX</option>
+                        <option value="100,1000">Dual-rate 100/1000</option>
+                        <option value="2500">2.5GBASE-X</option>
+                    </select>
+                    <div>Host B NIC</div>
+                    <select id="nicB_caps">
+                        <option value="10,100,1000">10/100/1000BASE-T</option>
+                        <option value="1000">1000BASE-T only</option>
+                        <option value="1000,2500,5000">NBASE-T (1/2.5/5G)</option>
+                    </select>
+                    <div>MC B Copper PHY</div>
+                    <select id="mcB_copper_caps">
+                        <option value="10,100,1000">10/100/1000BASE-T</option>
+                        <option value="10,100">10/100BASE-TX</option>
+                        <option value="1000,2500,5000">NBASE-T (1/2.5/5G)</option>
+                    </select>
+                    <div>MC B SFP Slot</div>
+                    <select id="mcB_sfp_caps">
+                        <option value="1000">1000BASE-X only</option>
+                        <option value="100">100BASE-FX only</option>
+                        <option value="100,1000">Dual-rate 100/1000 (RATE_SELECT)</option>
+                        <option value="2500">2.5GBASE-X</option>
+                    </select>
+                    <div>SFP B Module</div>
+                    <select id="sfpB_caps">
+                        <option value="1000">1000BASE-SX</option>
+                        <option value="100">100BASE-FX</option>
+                        <option value="100,1000">Dual-rate 100/1000</option>
+                        <option value="2500">2.5GBASE-X</option>
+                    </select>
+                </div>
+            </div>
+        </section>
+
+        <!-- RIGHT HOST: Ubuntu -->
+        <section class="host" id="hostB">
+            <h2>Host B (Ubuntu)</h2>
+            <div class="layer" id="appB"><h3>Application</h3><div class="kvs"><div class="k">Process:</div><div id="appB_proc">idle</div><div class="k">Action:</div><div id="appB_action">—</div></div></div>
+            <div class="interface" id="if_app_ip_B"><div>Sockets API</div><div class="detail"></div></div>
+            <div class="layer" id="ipB">
+                <h3>IP Stack (OS Kernel)</h3>
+                <div class="kvs">
+                    <div class="k">IPv4:</div><div id="ipB_addr" class="mono">(none)</div><div class="k">Subnet:</div><div id="ipB_subnet" class="mono">(none)</div>
+                    <div class="k">Route:</div><div id="ipB_route" class="mono">(no route)</div><div class="k">ARP:</div><div id="ipB_arp" class="mono">(empty)</div>
+                    <div class="k">Firewall:</div><div id="ipB_fw" class="mono">ALLOW</div>
+                </div>
+            </div>
+            <div class="interface" id="if_ip_mac_B"><div>DMA / IRQs</div><div class="detail"></div></div>
+            <div class="layer" id="macB"><h3>NIC (MAC Controller)</h3><div class="kvs"><div class="k">MAC:</div><div id="macB_addr" class="mono">BB:..:BB</div><div class="k">TX/RX:</div><div id="macB_tr" class="mono">idle</div></div></div>
+            <div class="interface" id="if_mac_phy_B"><div>GMII</div><div class="detail"></div></div>
+            <div class="layer" id="phyB"><h3>PHY (Physical)</h3><div class="kvs"><div class="k">Link:</div><div id="phyB_link" class="mono">DOWN</div><div class="k">Negotiation:</div><div id="phyB_neg" class="mono">—</div><div class="k">Speed:</div><div id="phyB_speed" class="mono">—</div></div></div>
+        </section>
+    </main>
+
+    <div class="connection-container">
+        <h3 class="text-lg font-semibold mb-2">Physical Connection</h3>
+        <div id="direct-ethernet-view">
+            <div class="cable-wrap">
+                <div class="port-row">HOST A ↔ Twisted Pairs ↔ HOST B</div>
+                <div class="cable twisted-pair-view" id="cable-animation-area">
+                    <div class="wire-conductor pin1" data-pin="1"><div class="track"></div><div class="activity"></div></div>
+                    <div class="wire-conductor pin2" data-pin="2"><div class="track"></div><div class="activity"></div></div>
+                    <div class="wire-conductor pin3" data-pin="3"><div class="track"></div><div class="activity"></div></div>
+                    <div class="wire-conductor pin6" data-pin="6"><div class="track"></div><div class="activity"></div></div>
+                    <div class="wire-conductor pin4" data-pin="4"><div class="track"></div><div class="activity"></div></div>
+                    <div class="wire-conductor pin5" data-pin="5"><div class="track"></div><div class="activity"></div></div>
+                    <div class="wire-conductor pin7" data-pin="7"><div class="track"></div><div class="activity"></div></div>
+                    <div class="wire-conductor pin8" data-pin="8"><div class="track"></div><div class="activity"></div></div>
+                </div>
+                <div class="port-row" id="encoding-label">PAM-5 Electrical Signals</div>
+            </div>
+        </div>
+        <div id="fiber-view" class="hidden">
+             <div class="cable-wrap">
+                <div class="port-row">HOST A ↔ Copper (4 pairs) ↔ Media Converter A ↔ SFP A ↔ Fiber ↔ SFP B ↔ Media Converter B ↔ Copper ↔ HOST B</div>
+                <div class="cable fiber-view" id="fiber-animation-area">
+                   <div class="copper-run" title="Patch cable from Host A to MC A">
+                       <div class="mini-conductor mini-pin1"></div>
+                       <div class="mini-conductor mini-pin2"></div>
+                       <div class="mini-conductor mini-pin3"></div>
+                       <div class="mini-conductor mini-pin6"></div>
+                       <div class="mini-conductor mini-pin4"></div>
+                       <div class="mini-conductor mini-pin5"></div>
+                       <div class="mini-conductor mini-pin7"></div>
+                       <div class="mini-conductor mini-pin8"></div>
+                   </div>
+                   <div class="media-converter" id="mcA">MC A
+                       <div class="interface tiny" id="if_copper_mc_A"><div>Copper PHY</div><div class="detail"></div></div>
+                       <div class="interface tiny" id="if_mc_sfp_A"><div>20-pin SFP MSA</div><div class="detail"></div></div>
+                       <div class="sfp-slot" id="sfpA">SFP A</div>
+                   </div>
+                   <div class="interface small" id="if_sfp_fiber_A"><div>Optical TX/RX</div><div class="detail"></div></div>
+                   <div class="fiber-cable" id="fiber-segment"></div>
+                   <div class="interface small" id="if_sfp_fiber_B"><div>Optical TX/RX</div><div class="detail"></div></div>
+                   <div class="media-converter" id="mcB">MC B
+                       <div class="interface tiny" id="if_mc_sfp_B"><div>20-pin SFP MSA</div><div class="detail"></div></div>
+                       <div class="sfp-slot" id="sfpB">SFP B</div>
+                       <div class="interface tiny" id="if_copper_mc_B"><div>Copper PHY</div><div class="detail"></div></div>
+                   </div>
+                   <div class="copper-run" title="Patch cable from MC B to Host B">
+                       <div class="mini-conductor mini-pin1"></div>
+                       <div class="mini-conductor mini-pin2"></div>
+                       <div class="mini-conductor mini-pin3"></div>
+                       <div class="mini-conductor mini-pin6"></div>
+                       <div class="mini-conductor mini-pin4"></div>
+                       <div class="mini-conductor mini-pin5"></div>
+                       <div class="mini-conductor mini-pin7"></div>
+                       <div class="mini-conductor mini-pin8"></div>
+                   </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="log-container">
+        <h3 class="text-xl font-semibold mb-2 text-center">Simulation Log</h3>
+        <div id="simulation-log"></div>
+    </div>
+
+<script>
+// --- UTILS & DOM BINDINGS ---
+const $ = (s, p = document) => p.querySelector(s);
+const dom = {
+    stateLabel: $('#stateLabel'), log: $('#simulation-log'), progress: $('#progress'),
+    speedSlider: $('#speed'), speedVal: $('#speedVal'), toggleFirewall: $('#toggleFirewall'),
+    scenarioSelect: $('#scenario-select'), encodingLabel: $('#encoding-label'),
+    directView: $('#direct-ethernet-view'), fiberView: $('#fiber-view'),
+    cableArea: $('#cable-animation-area'), fiberArea: $('#fiber-animation-area'),
+    playBtn: $('#play'), pauseBtn: $('#pause'), nextBtn: $('#next'), prevBtn: $('#prev'), resetBtn: $('#reset'),
+    hosts: { A: {}, B: {} }
+};
+['A', 'B'].forEach(h => {
+    const hostEl = $(`#host${h}`);
+    dom.hosts[h] = {
+        app: $('#app' + h, hostEl), ip: $('#ip' + h, hostEl), mac: $('#mac' + h, hostEl), phy: $('#phy' + h, hostEl),
+        if_app_ip: $('#if_app_ip_' + h, hostEl), if_ip_mac: $('#if_ip_mac_' + h, hostEl), if_mac_phy: $('#if_mac_phy_' + h, hostEl),
+        app_proc: $('#app' + h + '_proc', hostEl), app_action: $('#app' + h + '_action', hostEl), ip_addr: $('#ip' + h + '_addr', hostEl),
+        ip_subnet: $('#ip' + h + '_subnet', hostEl), ip_route: $('#ip' + h + '_route', hostEl), ip_arp: $('#ip' + h + '_arp', hostEl),
+        ip_fw: $('#ip' + h + '_fw', hostEl), mac_tr: $('#mac' + h + '_tr', hostEl), phy_link: $('#phy' + h + '_link', hostEl),
+        phy_neg: $('#phy' + h + '_neg', hostEl), phy_speed: $('#phy' + h + '_speed', hostEl),
+            // Fiber scenario elements
+            mc: $('#mc' + h), sfp: $('#sfp' + h),
+            if_copper_mc: $('#if_copper_mc_' + h), if_mc_sfp: $('#if_mc_sfp_' + h)
+    };
+});
+
+function set(el, text) { if (el) el.textContent = text; }
+function active(el, on) { if (el) el.classList.toggle('active', !!on); }
+function setDetail(el, text = '') { const detailEl = el.querySelector('.detail'); if (detailEl) detailEl.textContent = text; }
+function spawnAnimation(direction = 'right', label = 'FRAME', type = 'frame', area = dom.cableArea) {
+    const e = document.createElement('div');
+    e.className = `packet ${type}`; e.textContent = label;
+    e.style.animationName = direction === 'right' ? 'fly-right' : 'fly-left';
+    e.style.animationDuration = `${1.5 / state.speedFactor}s`;
+    e.addEventListener('animationend', () => e.remove());
+    area.appendChild(e);
+}
+let voltageInterval;
+function animateVoltages(active = false) {
+    clearInterval(voltageInterval);
+    const wires = dom.cableArea.querySelectorAll('.wire-conductor .activity');
+    if (active) {
+        voltageInterval = setInterval(() => {
+            wires.forEach(w => w.style.opacity = Math.random() * 0.8 + 0.2);
+        }, 100 / state.speedFactor);
+    } else {
+        wires.forEach(w => w.style.opacity = 0);
+    }
+}
+
+// --- FLOW DSL (Minimal) ---
+// Graph describes valid adjacency for highlight traversal
+const topologyGraph = {
+    'A.ip': ['A.if_ip_mac'],
+    'A.if_ip_mac': ['A.ip','A.mac'],
+    'A.mac': ['A.if_ip_mac','A.if_mac_phy'],
+    'A.if_mac_phy': ['A.mac','A.phy'],
+    'A.phy': ['A.if_mac_phy','medium'],
+    'medium': ['A.phy','B.phy'],
+    'B.phy': ['medium','B.if_mac_phy'],
+    'B.if_mac_phy': ['B.phy','B.mac'],
+    'B.mac': ['B.if_mac_phy','B.if_ip_mac'],
+    'B.if_ip_mac': ['B.mac','B.ip'],
+    'B.ip': ['B.if_ip_mac']
+};
+
+function derivePath(start, end) {
+    // Simple BFS between nodes
+    const q = [[start]]; const seen = new Set([start]);
+    while (q.length) {
+        const path = q.shift(); const node = path[path.length-1];
+        if (node === end) return path;
+        const nexts = topologyGraph[node] || [];
+        for (const n of nexts) if (!seen.has(n)) { seen.add(n); q.push(path.concat(n)); }
+    }
+    return null;
+}
+
+function highlightNode(node, detail) {
+    const [host, key] = node.split('.');
+    if (host === 'medium') return; // handled by animation
+    const bucket = host === 'A' ? dom.hosts.A : dom.hosts.B;
+    const el = key && bucket[key];
+    if (el) {
+        active(el, true);
+        if (el.classList && el.classList.contains('interface') && detail) setDetail(el, detail);
+    }
+}
+
+async function playPath(path, stepDelay = 220) {
+    for (let i=0;i<path.length;i++) {
+        const node = path[i];
+        if (node === 'medium') continue;
+        highlightNode(node);
+        await sleep(stepDelay);
+    }
+}
+
+async function flow({ send, medium, receive, sendDetail = {}, recvDetail = {}, stepDelay = 220 }) {
+    // send: { start:'A.ip', end:'A.phy' }
+    const sendPath = derivePath(send.start, send.end);
+    if (!sendPath) throw new Error('No path for send flow');
+    // apply optional per-node details
+    sendPath.forEach(n => highlightNode(n, sendDetail[n]));
+    await playPath(sendPath, stepDelay);
+    if (medium) {
+        // animate medium
+        if (medium === 'copper') animateVoltages(true), await sleep(400), animateVoltages(false);
+        if (medium === 'fiber') {/* future optical pulses */}
+    }
+    if (receive) {
+        const recvPath = derivePath(receive.start, receive.end);
+        if (!recvPath) throw new Error('No path for receive flow');
+        recvPath.forEach(n => highlightNode(n, recvDetail[n]));
+        await playPath(recvPath, stepDelay);
+    }
+}
+
+// Sequentially highlight a host's network stack from PHY upwards
+async function highlightSequenceForHost(hostKey, sequence, stepDelay = 350) {
+    for (const step of sequence) {
+        const element = dom.hosts[hostKey][step.key];
+        if (element) {
+            active(element, true);
+            if (step.detail && element.classList && element.classList.contains('interface')) {
+                setDetail(element, step.detail);
+            }
+        }
+        await sleep(step.delay || stepDelay);
+    }
+}
+
+// Sequentially highlight arbitrary element ids (non-host specific)
+async function highlightSequenceByIds(sequence, stepDelay = 350) {
+    for (const step of sequence) {
+        const element = document.getElementById(step.id);
+        if (element) {
+            active(element, true);
+            if (step.detail && element.classList && element.classList.contains('interface')) {
+                setDetail(element, step.detail);
+            }
+        }
+        await sleep(step.delay || stepDelay);
+    }
+}
+
+// --- STATE MANAGEMENT ---
+const initialState = () => ({
+    scene: 0, step: 0, playing: false, speedFactor: 1.0, fwBlock: true,
+    scenario: 'direct_1000baseT',
+    hostA: { ip: null, subnet: null, arp: {}, link: false, speed: null, neg: '—' },
+    hostB: { ip: null, subnet: null, arp: {}, link: false, speed: null, neg: '—' },
+    caps: {
+        nicA: '10,100,1000', mcA_copper: '10,100,1000', mcA_sfp: '1000', sfpA: '1000',
+        nicB: '10,100,1000', mcB_copper: '10,100,1000', mcB_sfp: '1000', sfpB: '1000'
+    }
+});
+let state = initialState();
+
+// --- SCRIPT LIBRARY ---
+// This is now a massive object containing all simulation logic and text.
+const scenarioLibrary = {
+    // ... SCRIPT CONTENT REDACTED FOR BREVITY ...
+};
+
+// Populate the scripts (in a separate block for readability)
+(function(lib) {
+    // Capability parsing and negotiation helpers
+    const parseCaps = (s) => (s || '').split(',').map(v => parseInt(v,10)).filter(Boolean).sort((a,b)=>a-b);
+    const toLabel = (rate) => ({10:'10Mbps',100:'100Mbps',1000:'1Gbps',2500:'2.5Gbps',5000:'5Gbps'}[rate] || `${rate}Mbps`);
+    const copperEncoding = (rate) => rate>=1000 ? 'PAM-5 (all 4 pairs)' : '4B/5B + MLT-3 (2 pairs)';
+    const fiberEncoding = (rate) => rate>=1000 ? '8B/10B (1.25 GBd)' : 'NRZ (100BASE-FX)';
+    const negotiate = (caps1, caps2) => {
+        const a = new Set(parseCaps(caps1));
+        const b = parseCaps(caps2).reverse(); // prefer higher first
+        for (const r of b) { if (a.has(r)) return r; }
+        return null;
+    };
+    const commonDisconnected = [
+        { log: { title: 'State: Disconnected.', subSteps: ["No physical connection is established.","The NIC's PHY transceiver cannot detect any electrical signals."] } },
+        { log: { title: 'PHY reports link DOWN.', subSteps: ["<b>This is an event, not a constant report.</b> When a cable is unplugged, the PHY detects a loss of signal.","This state change triggers a single hardware interrupt (IRQ) to notify the OS that the link is now down.","The OS network driver handles the interrupt and marks the interface state as 'NO CARRIER' or 'disconnected'. The PHY does not need to report again until a signal is re-detected."]}, highlights:['A.phy', 'B.phy'] },
+        { log: { title: 'Ping fails instantly.', subSteps: ["Without L1, no data can be sent.", "OS returns 'No route to host' error."] } }
+    ];
+    
+    const commonDHCP = [
+        { log: { title: 'OS Initiates DHCP.', subSteps: ["<b>What is DHCP?</b> Dynamic Host Configuration Protocol automates IP address assignment.","<b>Why now?</b> Most OS network managers (like `systemd-networkd` or Windows' NLA service) are configured to automatically seek an IP address via DHCP as soon as the driver signals 'carrier on'.","<b>DHCP DISCOVER Packet Creation:</b>","<ul><li>The OS crafts a special UDP packet from IP 0.0.0.0, Port 68 (client) to 255.255.255.255, Port 67 (server).</li><li>This packet essentially shouts, 'Is there a DHCP server out there that can give me an IP address?'</li></ul>"]}, highlights: ['A.ip', 'B.ip'] },
+        { log: { title: 'OS sends DHCP Frame to NIC.', subSteps: ["<b>Packet Encapsulation (IP Stack):</b>", "<ul><li>The kernel encapsulates the UDP packet in an IP header (Source: 0.0.0.0, Dest: 255.255.255.255).</li><li>Then wraps it in an Ethernet Frame header with Dest MAC = FF:FF:FF:FF:FF:FF (broadcast).</li><li>No ARP needed since destination is broadcast.</li></ul>", "<b>DMA Transmission (IP Stack → NIC):</b>", "<ul><li>IP stack writes frame descriptor to TX ring buffer in RAM.</li><li>NIC's DMA engine reads descriptor and fetches frame data from memory.</li></ul>", "<b>Physical Transmission (NIC → PHY → Wire):</b>", "<ul><li>MAC controller sends frame to PHY via GMII interface.</li><li>PHY encodes digital bits into electrical signals.</li><li>Signals transmitted on all wire pairs simultaneously.</li></ul>"]}, highlights: ['A.if_ip_mac', 'B.if_ip_mac'], action: async () => {
+            await flow({
+                send: { start: 'A.ip', end: 'A.phy' },
+                medium: 'copper',
+                receive: { start: 'B.phy', end: 'B.ip' },
+                sendDetail: { 'A.if_ip_mac': 'Driver queues TX descriptor', 'A.if_mac_phy': 'Parallel data MAC → PHY (GMII)' },
+                recvDetail: { 'B.if_ip_mac': 'DMA RX + IRQ' },
+                stepDelay: 180
+            });
+            spawnAnimation('right', 'DHCP', 'warn');
+            spawnAnimation('left', 'DHCP', 'warn');
+            await sleep(600);
+        } },
+        { log: { title: 'DHCP times out. Hosts remain unconfigured.', subSteps: ["With no DHCP server to reply with an OFFER, the OS's request times out.", "Some OSes may now self-assign a link-local address (from the 169.254.x.x block, known as APIPA) to allow communication on a small network without a DHCP server."]} }
+    ];
+    
+    const commonManualIP = [
+        { log: { title: 'Setting manual IPs: A=192.168.1.10, B=192.168.1.11', subSteps: ["The OS binds these logical addresses to the network interface in memory.", "The NIC hardware is unaware of IP addresses; it only deals with MACs."]}, highlights: ['A.ip', 'B.ip'], action: () => { state.hostA.ip = '192.168.1.10'; state.hostA.subnet = '255.255.255.0'; state.hostB.ip = '192.168.1.11'; state.hostB.subnet = '255.255.255.0'; } },
+        { log: { title: 'OS adds on-link route for 192.168.1.0/24.', subSteps: ["<b>What does '/24' mean?</b> This is CIDR notation for a subnet mask. It means the first 24 bits of the IP address identify the network. This is equivalent to `255.255.255.0`.", "<b>What is CIDR Notation?</b>", "<ul><li><b>CIDR = Classless Inter-Domain Routing:</b> A method for describing IP networks that replaced the old 'Class A/B/C' system in 1993.</li><li><b>The Number After the Slash:</b> Indicates how many bits (counting from the left) are used for the network portion. The remaining bits identify individual hosts.</li><li><b>Binary Example:</b> /24 means the first 24 bits are 1s: 11111111.11111111.11111111.00000000 = 255.255.255.0</li><li><b>Host Capacity:</b> /24 leaves 8 bits for hosts (2^8 = 256 addresses), minus network (192.168.1.0) and broadcast (192.168.1.255) = 254 usable host addresses.</li></ul>","<b>Why does this happen?</b> When you assign an IP, the OS automatically calculates the network address using bitwise AND operation:", "<ul><li><b>IP Address:</b> 192.168.1.10 = 11000000.10101000.00000001.00001010</li><li><b>Subnet Mask:</b> 255.255.255.0 = 11111111.11111111.11111111.00000000</li><li><b>Bitwise AND:</b> Each bit position: 1 AND 1 = 1, anything AND 0 = 0</li><li><b>Result:</b> 11000000.10101000.00000001.00000000 = 192.168.1.0 (the network address)</li></ul>","<b>What is an 'on-link' route?</b> The OS now has a rule in its routing table: 'To reach any IP address starting with 192.168.1.x, send the traffic directly out of this specific network interface. Do not use a gateway.' This is how it knows the other host is a direct neighbor."]}, highlights: ['A.ip', 'B.ip'] },
+        { log: { title: 'ARP caches are empty. Ready for L3 communication.', subSteps: ["<b>What is L3 Communication?</b> This refers to Layer 3, the Network Layer of the OSI model. Its job is to move packets between logical host addresses (IP addresses) across networks.","<b>What is an ARP Cache?</b>","<ul><li>For an IP packet to actually travel on a local Ethernet wire, it must be wrapped in an Ethernet frame. This frame needs a physical (MAC) destination address, not a logical (IP) one.</li><li>The Address Resolution Protocol (ARP) is used to discover the MAC address associated with a given IP address.</li><li>The ARP Cache is a table in the OS's memory that stores these IP-to-MAC mappings (e.g., `192.168.1.11 -> BB:BB...`) so it doesn't have to ask every time. It is currently empty.</li></ul>"]} }
+    ];
+
+    const commonPing = [
+        { log: { title: 'A> ping 192.168.1.11', subSteps: ["<b>What is a Socket?</b> A socket is a software endpoint for communication, provided by the OS. Applications don't talk to hardware directly; they talk to sockets.","<b>What does 'raw' mean?</b> A 'raw' socket allows the application to bypass the OS's TCP/UDP formatting. It lets `ping` create its own packet payload, in this case, an ICMP Echo Request.", "<b>Why bypass TCP/UDP?</b>", "<ul><li><b>ICMP is NOT TCP or UDP:</b> ICMP (Internet Control Message Protocol) is a separate Layer 3 protocol with its own header format. It sits alongside IP, not above it like TCP/UDP.</li><li><b>Direct IP Access:</b> Raw sockets let applications write directly to the IP payload, skipping the transport layer entirely.</li><li><b>Control Over Headers:</b> `ping` needs to set specific ICMP fields like Type (8 for Echo Request), Code (0), and a custom payload with timestamps.</li></ul>", "<b>Why does ping need its own packet payload?</b>", "<ul><li><b>Echo Request Format:</b> ICMP Echo has a specific structure: Type, Code, Checksum, Identifier, Sequence Number, and optional data.</li><li><b>Round-Trip Timing:</b> `ping` embeds timestamps in the payload to measure network latency when the reply returns.</li><li><b>Sequence Tracking:</b> Each ping gets a unique sequence number so replies can be matched to requests, detecting packet loss.</li><li><b>No Standard Service:</b> Unlike HTTP (port 80) or SSH (port 22), there's no 'ping service' running on the target. ICMP replies are generated by the kernel itself.</li></ul>","<b>What is a System Call?</b> This is the fundamental bridge between a userspace application (`ping.exe`) and the protected OS Kernel. `sendto()` is a specific system call where the app hands the packet data to the kernel and says, 'Please send this for me.' This triggers a CPU 'context switch' to kernel mode to perform the privileged operation."]}, highlights: ['A.app', 'A.if_app_ip'], action: () => { set(dom.hosts.A.app_proc, 'ping.exe'); setDetail(dom.hosts.A.if_app_ip, "sendto() syscall; context switch"); } },
+        { log: { title: 'OS finds route, needs MAC. Checks ARP cache (miss).', subSteps: ["<b>How does it determine this?</b> The kernel's IP stack performs the same subnet mask calculation on the *destination* IP (`192.168.1.11` AND `255.255.255.0` = `192.168.1.0`).","Since the result (`192.168.1.0`) matches the network address of the local interface, the kernel knows the destination is on-link and checks its ARP cache. The cache is empty, so it must perform ARP."]}, highlights: ['A.ip'] },
+        { log: { title: 'ARP Request: Who has 192.168.1.11?', subSteps: ["<b>ARP Request Creation (IP Layer):</b>", "<ul><li>The kernel's IP stack creates an ARP request packet with Target IP = 192.168.1.11 and Target MAC = 00:00:00:00:00:00 (unknown).</li><li>Source IP = 192.168.1.10, Source MAC = AA:AA:AA:AA:AA:AA (Host A's MAC).</li></ul>", "<b>Encapsulation (MAC Layer):</b>", "<ul><li>The ARP packet is wrapped in an Ethernet frame header.</li><li>Destination MAC = FF:FF:FF:FF:FF:FF (broadcast - every device on the network segment must process this).</li><li>EtherType = 0x0806 (indicates ARP protocol, not IP).</li></ul>", "<b>Transmission Down the Stack:</b>", "<ul><li>Frame passed to NIC via DMA ring buffer.</li><li>NIC's MAC controller sends frame to PHY via GMII.</li><li>PHY encodes and transmits electrical signals on all wire pairs.</li></ul>"]}, action: async () => { await flow({ send: { start: 'A.ip', end: 'A.phy' }, medium: 'copper', receive: { start: 'B.phy', end: 'B.ip' }, sendDetail: { 'A.if_ip_mac': 'Driver queues TX descriptor', 'A.if_mac_phy': 'Parallel data MAC → PHY (GMII)' }, recvDetail: { 'B.if_ip_mac': 'DMA RX + IRQ' }, stepDelay: 180 }); spawnAnimation('right', 'ARP Req', 'warn'); await sleep(800); } },
+        { log: { title: 'Host B replies: "I do, at BB:BB..."', subSteps: ["<b>Frame Reception (Host B PHY → MAC):</b>", "<ul><li>Host B's PHY detects electrical signals and decodes them back to digital bits.</li><li>PHY passes frame to MAC controller via GMII interface.</li><li>MAC controller checks destination address: FF:FF:FF:FF:FF:FF (broadcast) matches, so frame is accepted.</li></ul>", "<b>Frame Processing (MAC → IP Stack):</b>", "<ul><li>MAC controller uses DMA to write frame into RX ring buffer in RAM.</li><li>NIC raises hardware interrupt (IRQ) to notify CPU of incoming frame.</li><li>Network driver's Interrupt Service Routine (ISR) processes the frame from ring buffer.</li><li>Driver examines EtherType (0x0806) and passes ARP packet to kernel's ARP module.</li></ul>", "<b>ARP Reply Generation (IP Stack):</b>", "<ul><li>Kernel's ARP module examines Target IP (192.168.1.11) and recognizes it matches Host B's configured IP.</li><li>ARP module creates reply: Target IP = 192.168.1.10, Target MAC = AA:AA:AA:AA:AA:AA, Source IP = 192.168.1.11, Source MAC = BB:BB:BB:BB:BB:BB.</li><li>Kernel updates its own ARP cache: 192.168.1.10 → AA:AA:AA:AA:AA:AA.</li></ul>", "<b>Reply Transmission (Back Down the Stack):</b>", "<ul><li><b>IP → Driver:</b> ARP module hands reply to the driver for transmission.</li><li><b>Driver → DMA:</b> Driver writes a TX descriptor into the NIC's TX ring buffer, pointing at the ARP reply buffer in RAM.</li><li><b>MAC → GMII:</b> NIC MAC reads the descriptor, builds the frame (preamble, SFD, payload, FCS) and streams it over GMII to the PHY.</li><li><b>PHY → Medium:</b> PHY serializes and encodes bits onto the physical medium (electrical or optical depending on scenario).</li></ul>"]}, action: async () => { await highlightSequenceForHost('B', [ { key: 'ip' }, { key: 'if_ip_mac', detail: 'Driver queues TX descriptor' }, { key: 'mac' }, { key: 'if_mac_phy', detail: 'Parallel data MAC -> PHY (GMII)' }, { key: 'phy' } ], 200); spawnAnimation('left', 'ARP Reply', 'warn'); state.hostA.arp['192.168.1.11'] = 'BB:..:BB'; state.hostB.arp['192.168.1.10'] = 'AA:..:AA'; await sleep(1500); } },
+        { log: { title: 'OS sends ICMP frame to NIC via DMA.', subSteps: ["<b>Why This Complex System Exists:</b>", "<ul><li><b>Performance Problem:</b> If the CPU had to manually copy every packet byte-by-byte to the NIC, it would be constantly interrupted from other work. At 1Gbps, that's 125 million bytes per second!</li><li><b>Efficiency Solution:</b> Instead of moving data, we move small pointers. The NIC does the heavy lifting while the CPU works on other tasks.</li><li><b>Parallel Operation:</b> Multiple packets can be queued simultaneously, and the NIC can process them independently of CPU scheduling.</li></ul>", "<b>What is a Ring Buffer?</b>", "<ul><li><b>Circular Queue:</b> A fixed-size array of data structures in RAM, shared between the OS and NIC. When it reaches the end, it wraps back to the beginning.</li><li><b>Producer/Consumer:</b> The OS (producer) writes 'descriptors' to available slots. The NIC (consumer) reads and processes them.</li><li><b>Memory Location:</b> Typically allocated in coherent DMA memory that both CPU and NIC can access without cache coherency issues.</li></ul>", "<b>What is a TX Descriptor?</b>", "<ul><li><b>Metadata Structure:</b> It's not the packet itself, but a small piece of metadata (usually 16-32 bytes) containing:</li><li>Physical memory address where the actual packet data resides (in an `sk_buff` structure)</li><li>Length of the packet data</li><li>Control flags (e.g., 'generate checksum', 'this is the last fragment')</li></ul>", "<b>Why DMA (Direct Memory Access)?</b>", "<ul><li><b>CPU Liberation:</b> By giving the NIC a pointer instead of the data, the CPU is freed to do other work.</li><li><b>Hardware Autonomy:</b> The NIC's own DMA engine reads the descriptor, then autonomously fetches the packet data directly from RAM.</li><li><b>Zero CPU Involvement:</b> Once the descriptor is written, the NIC handles everything until completion, then optionally sends an interrupt.</li></ul>"]}, highlights: ['A.ip', 'A.if_ip_mac'], action: async () => {
+            const dstIp = '192.168.1.11';
+            if (!state.hostA.arp[dstIp]) {
+                logToScreen({ title: 'ARP unresolved. Cannot send ICMP.', type: 'bad', subSteps: [
+                    'Destination MAC unknown for '+dstIp+', ARP cache miss persists.',
+                    'ICMP frame not queued; ARP resolution required before send.'
+                ]});
+                return;
+            }
+            await flow({ send: { start: 'A.ip', end: 'A.phy' }, medium: 'copper', stepDelay: 160, sendDetail: { 'A.if_ip_mac': 'Driver writes TX descriptor', 'A.if_mac_phy': 'GMII → PHY' } });
+        } },
+        { log: { title: 'NIC sends frame to PHY via GMII.', subSteps: ["<b>MAC Controller Processing:</b>", "<ul><li>The MAC controller reads the frame from the TX ring buffer descriptor.</li><li>It prepends the 8-byte preamble (alternating 1s and 0s) and Start of Frame Delimiter (10101011).</li><li>Calculates and appends the 32-bit Frame Check Sequence (FCS) for error detection.</li></ul>", "<b>GMII Interface Transfer:</b>", "<ul><li>The complete frame is sent as parallel 8-bit data across the Gigabit Media Independent Interface.</li><li>GMII is a standardized 22-pin interface on the circuit board connecting MAC and PHY chips.</li><li>Includes separate TX_CLK (125MHz), TX_EN (transmit enable), and TX_ER (transmit error) control signals.</li></ul>"],}, highlights: ['A.mac', 'A.if_mac_phy'], action: () => { setDetail(dom.hosts.A.if_mac_phy, "Parallel data transfer MAC -> PHY"); } },
+        { log: { title: 'PHY encodes and transmits electrical signals.', subSteps: ["<b>Parallel to Serial:</b> The PHY serializes the parallel data from the GMII.", "<b>PAM-5 Encoding:</b> It converts the bits into 5 distinct voltage levels. This allows more data to be sent per signal change (symbol).", "<b>All Pairs Used:</b> For 1Gbps, signals are sent simultaneously across all 4 twisted pairs, with echo cancellation to manage bi-directional traffic."],}, highlights: ['A.phy'], action: async () => { animateVoltages(true); await sleep(1500); animateVoltages(false); } },
+        { log: { title: 'Host B PHY decodes signals, passes to MAC.', subSteps: ["<b>Signal vs Data:</b> The PHY is constantly listening for voltage patterns that match valid PAM-5 symbols. It ignores idle patterns or noise.","<b>Preamble Detection:</b> When it detects the special 8-byte 'preamble' and 'Start of Frame Delimiter', it knows a data frame is arriving.","<b>Decoding:</b> It decodes the subsequent voltage changes back into a stream of digital bits.","<b>GMII Transfer:</b> This raw bitstream is passed across the GMII interface to the MAC controller."]}, highlights: ['B.phy', 'B.if_mac_phy'], action: async () => { await highlightSequenceForHost('B', [ { key: 'phy' }, { key: 'if_mac_phy', detail: 'GMII RX from PHY' }, { key: 'mac' }, { key: 'if_ip_mac', detail: 'DMA RX + IRQ' }, { key: 'ip' } ], 200); } },
+        { log: { title: 'Host B MAC checks frame, sends to OS via DMA.', subSteps: ["<b>MAC Address Filtering:</b> The MAC controller hardware first checks the frame's Destination MAC address. If it doesn't match the NIC's own hardware address (or the broadcast address), the frame is discarded instantly by the hardware. This is a critical, efficient filtering step.","<b>Checksum & DMA:</b> If the address matches, the MAC verifies the Frame Check Sequence (FCS). If valid, it uses DMA to place the entire frame into a pre-allocated RX Ring Buffer in RAM.","<b>IRQ Notification:</b> The NIC then sends an IRQ to the CPU to signal 'new frame has arrived'."]}, highlights: ['B.mac', 'B.if_ip_mac'], action: () => { setDetail(dom.hosts.B.if_ip_mac, "NIC writes to RX Ring Buffer, raises IRQ"); } },
+        { log: { title: 'Host B kernel generates Echo Reply and sends.', subSteps: ["<b>ICMP Processing (IP Stack):</b>", "<ul><li><b>Who is in charge?</b> This is not an application. The IP protocol (RFC 792) mandates that a host receiving an ICMP Echo Request (Type 8) should respond with an ICMP Echo Reply (Type 0).</li><li><b>Automatic Response:</b> The OS's IP stack is programmed to do this automatically when the driver reads the frame from RAM and passes it up.</li><li>The IP stack decapsulates the packet, recognizes ICMP Type 8, and immediately constructs a Type 0 reply.</li></ul>", "<b>Reply Packet Creation:</b>", "<ul><li>Swaps Source/Dest IP addresses (192.168.1.11 → 192.168.1.10).</li><li>Changes ICMP Type from 8 (Echo Request) to 0 (Echo Reply).</li><li>Copies the original payload (including timestamp) back unchanged.</li><li>Recalculates ICMP and IP checksums.</li></ul>", "<b>Transmission Back Down the Stack:</b>", "<ul><li>IP Stack → DMA ring buffer with TX descriptor.</li><li>NIC MAC → PHY via GMII interface.</li><li>PHY → Electrical signals on wire pairs.</li></ul>"]}, highlights: ['B.ip'], action: async () => { await flow({ send: { start: 'B.ip', end: 'B.phy' }, medium: 'copper', receive: { start: 'A.phy', end: 'A.ip' }, sendDetail: { 'B.if_ip_mac': 'TX descriptor queued', 'B.if_mac_phy': 'GMII → PHY' }, recvDetail: { 'A.if_ip_mac': 'DMA RX + IRQ' }, stepDelay: 180 }); } },
+        { log: { title: 'Host A receives reply. Firewall check...', subSteps: ["<b>How does a firewall work?</b> A firewall like Windows Filtering Platform or Linux Netfilter is a framework of 'hooks' inside the kernel's networking stack.","<b>Packet Inspection:</b> As the ICMP reply packet (an `sk_buff`) travels up the stack from the driver, it passes through these hooks.","<b>Rule Matching:</b> The firewall inspects the packet's headers (Source/Dest IP, Protocol=ICMP, ICMP Type=0) against its list of rules.","<b>Action:</b> If a rule matches (e.g., 'Block all inbound ICMP'), the kernel simply discards the `sk_buff` and stops processing it. The `ping` application in userspace never receives the data and eventually reports a timeout."]}, highlights: ['A.ip'], action: async () => { await highlightSequenceForHost('A', [ { key: 'phy' }, { key: 'if_mac_phy', detail: 'GMII RX from PHY' }, { key: 'mac' }, { key: 'if_ip_mac', detail: 'DMA RX + IRQ' }, { key: 'ip' } ], 200); if(state.fwBlock) { logToScreen({title: 'Firewall drops inbound ICMP packet!', type:'bad', subSteps: ["Firewall rule for inbound ICMP is 'Block'.", "Packet is discarded before reaching 'ping' application."]}); set(dom.hosts.A.app_action, 'Request timed out.'); } else { logToScreen({title: 'ICMP reply allowed. Ping successful!', type:'good', subSteps: ["Firewall allows packet.", "OS delivers ICMP reply to the 'ping' application."]}); set(dom.hosts.A.app_action, 'Reply received!'); } } }
+    ];
+
+    lib.direct_1000baseT = [
+        commonDisconnected,
+        // Scene 1: Connected, No IP - specific to 1000BASE-T
+        [
+            { log: { title: 'Cable plugged in. PHYs begin Auto-Negotiation.', subSteps: ["<b>RJ45 connectors make contact, completing the electrical circuit.</b>", "<b>PHYs send Fast Link Pulses (FLP):</b>", "<ul><li>An FLP is a burst of 17-33 electrical pulses encoding a 16-bit Link Code Word (LCW).</li><li>The LCW advertises the PHY's capabilities (e.g., support for 1000BASE-T, 100BASE-TX, Full/Half-Duplex).</li></ul>", "<b>The 'Choice' Process:</b>", "<ul><li>Each PHY receives the other's LCW and compares it to its own capabilities.</li><li>They both independently apply a standard priority algorithm (e.g., 1000BASE-T Full > 1000BASE-T Half > 100BASE-TX Full...).</li><li>Because both PHYs use the same algorithm, they both arrive at the same conclusion for the highest common performance mode without a central 'chooser'.</li></ul>"]}, highlights:['A.phy', 'B.phy'], action: async () => { state.hostA.link = true; state.hostB.link = true; state.hostA.neg = state.hostB.neg = 'Negotiating…'; for (let i = 0; i < 3; i++) { spawnAnimation('right', 'FLP', 'pulse'); spawnAnimation('left', 'FLP', 'pulse'); await sleep(250); } } },
+            { log: { title: 'Link UP! Negotiated 1Gbps/Full-Duplex.', subSteps: ["<b>Agreement Finalized:</b> The last FLP exchange includes an 'Acknowledgement' bit, confirming both PHYs agree on the same LCW.", "<b>Master/Slave Resolution (1000BASE-T specific):</b>", "<ul><li>After FLP, the PHYs exchange 'Next Page' messages.</li><li>One field in this message contains a value derived from a hardware seed. The PHY with the higher value becomes the MASTER, the other the SLAVE.</li><li>The MASTER provides the critical clock signal for synchronizing data transmission across all wire pairs. This is a deterministic process.</li></ul>", "<b>PHY State Storage:</b> The negotiated speed (1Gbps) and duplex (Full) are stored in the PHY's volatile hardware registers.", "<ul><li><b>What are 'Volatile' Registers?</b> These are memory locations inside the PHY chip that lose their contents when power is removed. Unlike EEPROM or Flash memory, volatile registers are fast SRAM-based storage used for operational state.</li><li><b>Specific Registers:</b> The PHY stores negotiated parameters in standardized registers like the Basic Status Register (0x01) and 1000BASE-T Status Register (0x0A) defined by IEEE 802.3.</li><li><b>Why Volatile?</b> Each time the link comes up, negotiation must happen fresh. The volatile nature ensures no 'stale' configuration persists from previous connections with different partners.</li></ul>", "<b>Notifying the OS (Hardware Interrupt):</b>", "<ul><li>The PHY signals 'Link Up' to the MAC controller chip via the internal GMII interface.</li><li>The MAC controller (a PCIe device) asserts a voltage on its assigned Interrupt Request (IRQ) line on the motherboard bus.</li><li>The system's Interrupt Controller alerts the CPU, forcing it to pause its current task.</li><li>The CPU executes the Interrupt Service Routine (ISR) from the NIC's device driver, which reads the NIC's registers to see the cause is a 'Link State Change'.</li><li>The driver updates the OS's internal network interface state to 'carrier on', making the link available to the IP Stack.</li></ul>"]}, highlights: ['A.if_ip_mac', 'B.if_ip_mac', 'A.if_mac_phy', 'B.if_mac_phy'], action: async () => { state.hostA.neg = 'Done'; state.hostA.speed = '1Gbps/Full'; state.hostB.neg = 'Done'; state.hostB.speed = '1Gbps/Full'; await Promise.all([
+                highlightSequenceForHost('A', [
+                    { key: 'phy' },
+                    { key: 'if_mac_phy', detail: 'PHY asserts Link Up' },
+                    { key: 'mac' },
+                    { key: 'if_ip_mac', detail: 'NIC raises IRQ' },
+                    { key: 'ip' }
+                ], 250),
+                highlightSequenceForHost('B', [
+                    { key: 'phy' },
+                    { key: 'if_mac_phy', detail: 'PHY asserts Link Up' },
+                    { key: 'mac' },
+                    { key: 'if_ip_mac', detail: 'NIC raises IRQ' },
+                    { key: 'ip' }
+                ], 250)
+            ]); } },
+            ...commonDHCP
+        ],
+        commonManualIP,
+        commonPing
+    ];
+
+    lib.direct_100baseTX = [
+        commonDisconnected,
+        // Scene 1: 100BASE-TX specific connection
+        [
+             { log: { title: 'Cable plugged in (100BASE-TX). PHYs begin Auto-Negotiation.', subSteps: ["<b>RJ45 connectors make contact, completing the electrical circuit.</b>", "<b>PHYs send Fast Link Pulses (FLP):</b>", "<ul><li>An FLP is a burst of 17-33 electrical pulses encoding a 16-bit Link Code Word (LCW).</li><li>For 100BASE-TX, the LCW advertises capabilities like 100BASE-TX Full/Half-Duplex, 10BASE-T Full/Half-Duplex.</li><li>Notably absent: any 1000BASE-T capabilities, so the highest common mode will be 100Mbps.</li></ul>", "<b>The 'Choice' Process:</b>", "<ul><li>Each PHY receives the other's LCW and compares it to its own capabilities.</li><li>They both independently apply the same priority algorithm: 100BASE-TX Full > 100BASE-TX Half > 10BASE-T Full > 10BASE-T Half.</li><li>Both arrive at 100BASE-TX Full-Duplex as the highest common capability.</li></ul>"]}, highlights:['A.phy', 'B.phy'], action: async () => { state.hostA.link = true; state.hostB.link = true; state.hostA.neg = state.hostB.neg = 'Negotiating…'; for (let i = 0; i < 3; i++) { spawnAnimation('right', 'FLP', 'pulse'); spawnAnimation('left', 'FLP', 'pulse'); await sleep(250); } } },
+             { log: { title: 'Link UP! Negotiated 100Mbps/Full-Duplex.', subSteps: ["The PHYs agree on 100Mbps Full Duplex. Master/Slave resolution is not required for 100BASE-TX.", "<b>Encoding:</b> The PHY will now use 4B/5B encoding combined with MLT-3 line coding.", "<b>Wire Usage:</b> Only two pairs are used: one dedicated for transmitting (TX) and one for receiving (RX)."]}, highlights: ['A.phy', 'B.phy'], action: async () => { state.hostA.neg = 'Done'; state.hostA.speed = '100Mbps/Full'; state.hostB.neg = 'Done'; state.hostB.speed = '100Mbps/Full'; await Promise.all([
+                highlightSequenceForHost('A', [
+                    { key: 'phy' },
+                    { key: 'if_mac_phy', detail: 'PHY asserts Link Up' },
+                    { key: 'mac' },
+                    { key: 'if_ip_mac', detail: 'NIC raises IRQ' },
+                    { key: 'ip' }
+                ], 250),
+                highlightSequenceForHost('B', [
+                    { key: 'phy' },
+                    { key: 'if_mac_phy', detail: 'PHY asserts Link Up' },
+                    { key: 'mac' },
+                    { key: 'if_ip_mac', detail: 'NIC raises IRQ' },
+                    { key: 'ip' }
+                ], 250)
+            ]); } },
+            ...commonDHCP
+        ],
+        commonManualIP,
+        // Scene 3: Ping specific to 100BASE-TX
+        commonPing.map(step => {
+            if (step.log.title.includes('PAM-5')) {
+                const newStep = JSON.parse(JSON.stringify(step)); // Deep copy
+                newStep.log.subSteps = ["<b>4B/5B Encoding:</b> The PHY takes each 4 bits of data and maps them to a 5-bit symbol. This ensures there are never long strings of zeros, which helps with clock recovery.", "<b>MLT-3 Line Coding:</b> The 5-bit symbols are then converted to one of three voltage levels (+V, 0, -V) for transmission on the wire. Only two pairs are used."];
+                return newStep;
+            }
+            return step;
+        })
+    ];
+
+    lib.fiber_1000baseSX = [
+        // Scene 0
+        [{ log: { title: 'State: Disconnected.', subSteps: ["All components are disconnected and powered down."] } }],
+        // Scene 1: MCs powered (no SFP yet)
+        [
+            { log: { title: 'Media Converters Powered On.', subSteps: ["Both media converters are powered up.", "No SFPs are inserted yet; only copper PHYs are active on the MCs."] }, highlights: ['A.mc', 'B.mc'] }
+        ],
+        // Scene 2: SFP A inserted first (before copper)
+        [
+            { log: { title: 'SFP A Inserted (before copper).', subSteps: ["SFP A is inserted into Media Converter A.", "<b>I2C Read:</b> MC A reads SFP A EEPROM via I2C (MSA).", "<b>OS State on A:</b> Still no carrier; Host A copper not connected yet.", "<b>MC Behavior:</b> Optical TX usually remains disabled until copper side is up (policy-dependent)."] }, highlights: ['A.mc'] , action: async () => { await highlightSequenceByIds([ { id: 'if_mc_sfp_A', detail: 'I2C: EEPROM read (MSA)' }, { id: 'sfpA' } ], 220); active(document.getElementById('mcA'), true); } }
+        ],
+        // Scene 3: Copper Link Handshake (Host A ↔ MC A)
+        [
+             { log: { title: 'Host A connects to Media Converter A.', subSteps: ["An Ethernet cable is connected between Host A's NIC and the copper port of Media Converter A."]}, highlights: ['A.phy', 'A.mc'] },
+             { log: { title: 'Auto-Negotiation on Copper Link (Host A <-> MC A).', subSteps: [() => `<b>Capability Sets:</b> Host A NIC = ${state.caps.nicA} Mbps; MC A Copper = ${state.caps.mcA_copper} Mbps`, "<b>RJ45 connector from Host A plugged into Media Converter A's copper port.</b>", "<b>PHYs send Fast Link Pulses (FLP):</b>", "<ul><li>Both sides advertise capabilities from their sets.</li><li>Standard priority selects highest common rate.</li></ul>", () => { const a=state.caps.nicA.split(',').map(Number); const b=state.caps.mcA_copper.split(',').map(Number).sort((x,y)=>y-x); const r=b.find(k=>a.includes(k)); return r?`<b>Result:</b> ${r>=1000?'1Gbps':r+'Mbps'} using ${r>=1000?'PAM-5 (all 4 pairs)':'4B/5B + MLT-3 (2 pairs)'}.`:'<b>No common mode:</b> Link remains DOWN'; }, "<b>What does the OS think now?</b>", "<ul><li>The NIC driver reports <i>carrier on</i> when its local copper PHY negotiates with MC A.</li><li>The OS sees a local L1/L2 link only. The MC is not an IP endpoint; it has no IP address on this patch segment.</li><li>DHCP may start on the host; frames will leave A and enter MC A even if the far fiber side is down.</li></ul>", "<b>If SFP is missing on MC A:</b>", "<ul><li>Copper auto‑neg still succeeds (local segment A↔MC A).</li><li>MC A cannot forward frames to fiber; DHCP/ARP will get no replies.</li><li>From OS view: <i>carrier on</i> but no responses, timeouts occur.</li></ul>", "<b>If SFP present but fiber path is down:</b>", "<ul><li>Same as above: local copper up, remote path down; MC A drops/doesn’t forward beyond optical port.</li><li>OS continues retries (DHCP, ARP) without answers.</li></ul>"]}, highlights: ['A.phy', 'A.mc'] , action: async () => { animateVoltages(true); await sleep(600); animateVoltages(false); await highlightSequenceByIds([ { id: 'if_copper_mc_A', detail: 'Copper PHY negotiating (FLP)' } ], 200); active(document.getElementById('mcA'), true); } },
+             { log: { title: 'Copper Link UP! (Host A <-> MC A).', subSteps: ["<b>Agreement Finalized:</b> Both PHYs exchange acknowledgement bits confirming 1000BASE-T Full-Duplex agreement.", "<b>Link State Change:</b>", "<ul><li>Media Converter A's copper PHY signals 'Link Up' to its internal MAC controller.</li><li>Host A's NIC PHY signals 'Link Up' to its MAC controller via GMII.</li><li>Host A's MAC controller raises an IRQ to the CPU.</li><li>Host A's network driver handles the interrupt and sets interface state to 'carrier on'.</li></ul>", "<b>Partial Connectivity:</b> Host A can now communicate with Media Converter A, but the fiber link to Host B is not yet established."]}, highlights: ['A.phy', 'A.mc'] , action: async () => { await highlightSequenceForHost('A', [ { key: 'phy' }, { key: 'if_mac_phy', detail: 'PHY asserts Link Up' }, { key: 'mac' }, { key: 'if_ip_mac', detail: 'NIC raises IRQ' }, { key: 'ip' } ], 250); } }
+        ],
+        // Scene 4: Copper Link Handshake (Host B ↔ MC B)
+        [
+            { log: { title: 'Host B connects to Media Converter B.', subSteps: ["An Ethernet cable is connected between Host B's NIC and the copper port of Media Converter B."]}, highlights: ['B.phy', 'B.mc'] },
+            { log: { title: 'Auto-Negotiation on Copper Link (Host B <-> MC B).', subSteps: [() => `<b>Capability Sets:</b> Host B NIC = ${state.caps.nicB} Mbps; MC B Copper = ${state.caps.mcB_copper} Mbps`, "<b>RJ45 connector from Host B plugged into Media Converter B's copper port.</b>", "<b>PHYs send Fast Link Pulses (FLP):</b>", "<ul><li>Both sides advertise capabilities from their sets.</li><li>Standard priority selects highest common rate.</li></ul>", () => { const a=state.caps.nicB.split(',').map(Number); const b=state.caps.mcB_copper.split(',').map(Number).sort((x,y)=>y-x); const r=b.find(k=>a.includes(k)); return r?`<b>Result:</b> ${r>=1000?'1Gbps':r+'Mbps'} using ${r>=1000?'PAM-5 (all 4 pairs)':'4B/5B + MLT-3 (2 pairs)'}.`:'<b>No common mode:</b> Link remains DOWN'; }, "<b>OS and rate governance:</b>", "<ul><li>At this time SFP B may be <i>absent</i>, so MC B allows the copper link to negotiate independently.</li><li>When SFP B is later inserted and reports a lower rate (e.g., 100BASE‑FX), MC B will <i>drop</i> copper link and <i>re-advertise</i> 10/100 only, forcing Host B NIC to renegotiate.</li><li>During this forced renegotiation the OS on B observes link <i>down</i> → <i>up</i>; DHCP/ARP timers pause/resume.</li></ul>", "<b>What does the OS think now?</b>", "<ul><li>The NIC driver reports <i>carrier on</i> when its local copper PHY negotiates with MC B.</li><li>The OS sees a local L1/L2 link only. The MC is not an IP endpoint; it has no IP address on this patch segment.</li><li>DHCP may start on the host; frames will leave B and enter MC B even if the far fiber side is down.</li></ul>"]}, highlights: ['B.phy', 'B.mc'] , action: async () => { animateVoltages(true); await sleep(600); animateVoltages(false); await highlightSequenceByIds([ { id: 'if_copper_mc_B', detail: 'Copper PHY negotiating (FLP)' } ], 200); active(document.getElementById('mcB'), true); } },
+            { log: { title: 'Copper Link UP! (Host B <-> MC B).', subSteps: ["<b>Agreement Finalized:</b> Both PHYs exchange acknowledgement bits confirming the chosen speed/duplex.", "<b>Link State Change:</b>", "<ul><li>Media Converter B's copper PHY signals 'Link Up' to its internal MAC.</li><li>Host B's NIC PHY signals 'Link Up' to its MAC controller via GMII.</li><li>Host B's MAC controller raises an IRQ to the CPU.</li><li>Host B's driver sets interface state to 'carrier on'.</li></ul>"]}, highlights: ['B.phy', 'B.mc'] , action: async () => { await highlightSequenceForHost('B', [ { key: 'phy' }, { key: 'if_mac_phy', detail: 'PHY asserts Link Up' }, { key: 'mac' }, { key: 'if_ip_mac', detail: 'NIC raises IRQ' }, { key: 'ip' } ], 250); } }
+        ],
+        // Scene 5: SFP B inserted (after copper)
+        [
+            { log: { title: 'SFP B Inserted (after copper).', subSteps: ["SFP B is inserted into Media Converter B.", "<b>I2C Read:</b> MC B reads SFP B EEPROM via I2C (MSA) to determine supported optical rates.", "<b>Rate coordination:</b> If SFP B reports 100BASE‑FX only while copper negotiated 1Gbps, MC B <i>forces</i> copper renegotiation by dropping link and re‑advertising 10/100.", "<b>OS State on B:</b> The NIC sees link <i>down</i> then <i>up</i>; DHCP/ARP timers pause and resume; routes persist but traffic stalls briefly.", "<b>Clocks & timing:</b> Copper 1000BASE‑T uses master/slave clock resolution; fiber 1000BASE‑X uses SerDes and CDR. MC B bridges these domains; no copper master/slave exists on the optical side."] }, highlights: ['B.mc'] , action: async () => { await highlightSequenceByIds([ { id: 'if_mc_sfp_B', detail: 'I2C: EEPROM read (MSA)' }, { id: 'sfpB' } ], 220); active(document.getElementById('mcB'), true); } }
+        ],
+        // Scene 6: Fiber Link Handshake
+        [
+            { log: { title: 'Fiber Optic Cable Connected.', subSteps: ["The LC fiber optic patch cable is connected between the two SFP modules.", "<b>Optical Interfaces Active:</b> Each SFP exposes optical TX/RX subassemblies connected to the LC receptacles. TX_DISABLE/TX_FAULT control + monitor laser; RX_LOS indicates received optical power threshold."]}, highlights: ['A.sfp', 'B.sfp'] },
+            { log: { title: 'SFP A Transmit Laser Enabled.', subSteps: ["<b>Link State Propagation:</b> Media Converter A's internal logic detects that its copper-side PHY link is UP.", "<b>Laser Enable Sequence:</b>", "<ul><li>The Media Converter's microcontroller asserts the 'TX_DISABLE' pin on SFP A to LOW (enabling transmission).</li><li>SFP A's internal laser driver circuit powers up the VCSEL (Vertical Cavity Surface Emitting Laser).</li><li>The VCSEL begins emitting 850nm infrared light modulated at 1.25 Gbps (8B/10B encoded 1Gbps data).</li><li>Light travels through the LC connector into the fiber optic cable's core.</li></ul>", "<b>Interfaces Highlighted:</b> Copper PHY → MC logic → <i>MC↔SFP MSA</i> → <i>SFP Optical TX</i> → Fiber."]}, highlights: ['A.if_copper_mc', 'A.if_mc_sfp', 'A.sfp'], action: async () => { await highlightSequenceByIds([ { id: 'if_copper_mc_A', detail: 'Copper PHY link up' }, { id: 'if_mc_sfp_A', detail: 'MSA pins: TX_DISABLE=LOW' }, { id: 'sfpA' }, { id: 'if_sfp_fiber_A', detail: 'Optical TX active' } ], 220); } },
+            { log: { title: 'SFP B Detects Light, De-asserts RX_LOS.', subSteps: ["<b>Optical Signal Reception:</b>", "<ul><li>850nm light from SFP A travels through the fiber optic cable's glass core via total internal reflection.</li><li>The light reaches SFP B's LC connector and enters its photodiode (typically an InGaAs PIN diode).</li><li>The photodiode converts the optical signal back into electrical current proportional to the light intensity.</li></ul>", "<b>Signal Processing:</b>", "<ul><li>SFP B's internal transimpedance amplifier (TIA) converts the photodiode current into voltage.</li><li>A limiting amplifier processes the signal and performs clock/data recovery (CDR).</li><li>The recovered signal strength is monitored by the SFP's internal circuitry.</li></ul>", "<b>RX_LOS De-assertion:</b>", "<ul><li>When signal strength exceeds the minimum threshold (~-17 dBm for 1000BASE-SX), the 'Receive Loss of Signal' (RX_LOS) pin changes from HIGH to LOW.</li><li>This digital signal notifies Media Converter B that valid optical data is being received.</li></ul>", "<b>Interfaces Highlighted:</b> Fiber → <i>SFP Optical RX</i> → <i>MC↔SFP MSA</i> → MC logic."]}, highlights: ['B.sfp', 'B.if_mc_sfp'], action: async () => { await highlightSequenceByIds([ { id: 'if_sfp_fiber_B', detail: 'Optical RX power detected' }, { id: 'sfpB' }, { id: 'if_mc_sfp_B', detail: 'RX_LOS → LOW' } ], 220); } },
+            { log: { title: 'SFP B Transmit Laser Enabled.', subSteps: ["<b>Media Converter B Response:</b>", "<ul><li>Media Converter B's microcontroller monitors the RX_LOS pin from SFP B.</li><li>When RX_LOS de-asserts (goes LOW), it indicates valid incoming optical signal.</li><li>The microcontroller responds by asserting TX_DISABLE pin to LOW on SFP B.</li></ul>", "<b>SFP B Laser Activation:</b>", "<ul><li>SFP B's VCSEL laser driver powers up and begins emitting 850nm light.</li><li>Light is modulated with 8B/10B encoded data at 1.25 Gbps.</li><li>Optical signal travels back through the fiber to SFP A.</li></ul>", "<b>Bi-directional Link Established:</b>", "<ul><li>Both SFPs are now transmitting and receiving simultaneously.</li><li>Full-duplex optical communication is active at 1000BASE-SX specification.</li><li>The fiber link segment is now ready to carry Ethernet frames.</li></ul>", "<b>Interfaces Highlighted:</b> MC logic → <i>MC↔SFP MSA</i> → <i>SFP Optical TX</i> → Fiber."]}, highlights: ['B.if_mc_sfp', 'B.sfp'], action: async () => { await highlightSequenceByIds([ { id: 'if_mc_sfp_B', detail: 'TX_DISABLE=LOW' }, { id: 'sfpB' }, { id: 'if_sfp_fiber_B', detail: 'Optical TX active' } ], 220); } }
+        ],
+        // Scene 6: Final Link State
+        [
+            { log: { title: 'End-to-End Link Evaluation', subSteps: [() => { const rA = (function(){ const A=state.caps.nicA.split(',').map(Number); const B=state.caps.mcA_copper.split(',').map(Number).sort((x,y)=>y-x); for(const k of B){ if(A.includes(k)) return k; } return null; })(); const rB = (function(){ const A=state.caps.nicB.split(',').map(Number); const B=state.caps.mcB_copper.split(',').map(Number).sort((x,y)=>y-x); for(const k of B){ if(A.includes(k)) return k; } return null; })(); const rFiberSlotsOK = (function(){ const a=state.caps.mcA_sfp.split(','); const b=state.caps.mcB_sfp.split(','); return a.some(x=>b.includes(x)); })(); const rSFP = (function(){ const A=state.caps.sfpA.split(',').map(Number); const B=state.caps.sfpB.split(',').map(Number).sort((x,y)=>y-x); for(const k of B){ if(A.includes(k)) return k; } return null; })(); const ok = rA && rB && rFiberSlotsOK && rSFP; return ok?'<b>Complete Path Established:</b>':'<b>Path Incomplete:</b> One or more segments lack a common mode.'; }, () => { const fmt=(r)=> r? (r>=1000?'1Gbps':r+'Mbps') : 'NO LINK'; const rA=(function(){ const A=state.caps.nicA.split(',').map(Number); const B=state.caps.mcA_copper.split(',').map(Number).sort((x,y)=>y-x); for(const k of B){ if(A.includes(k)) return k; } return null; })(); const rSFP=(function(){ const A=state.caps.sfpA.split(',').map(Number); const B=state.caps.sfpB.split(',').map(Number).sort((x,y)=>y-x); for(const k of B){ if(A.includes(k)) return k; } return null; })(); const rB=(function(){ const A=state.caps.nicB.split(',').map(Number); const B=state.caps.mcB_copper.split(',').map(Number).sort((x,y)=>y-x); for(const k of B){ if(A.includes(k)) return k; } return null; })(); return `<ul><li>Host A ↔ MC A (copper): ${fmt(rA)} (${rA>=1000?'PAM-5':'4B/5B+MLT-3'})</li><li>SFP A ↔ SFP B (fiber): ${fmt(rSFP)} (${rSFP>=1000?'8B/10B':'NRZ 100BASE-FX'})</li><li>MC B ↔ Host B (copper): ${fmt(rB)} (${rB>=1000?'PAM-5':'4B/5B+MLT-3'})</li></ul>`; }, "<b>Transparent Operation:</b>", "<ul><li>Media Converters perform real-time electrical-to-optical and optical-to-electrical conversion.</li><li>Frame forwarding occurs at Layer 1 (Physical) - no MAC address inspection or modification.</li></ul>", "<b>Ready for Higher Layers:</b>", "<ul><li>If all three segments have carrier, OS proceeds with DHCP/manual IP.</li></ul>"]} }
+        ]
+    ];
+})(scenarioLibrary);
+
+
+// --- UI & ENGINE ---
+function render() {
+    // Show/hide correct connection view
+    const isFiber = state.scenario.startsWith('fiber');
+    dom.directView.classList.toggle('hidden', isFiber);
+    dom.fiberView.classList.toggle('hidden', !isFiber);
+    set(dom.encodingLabel, state.scenario === 'direct_100baseTX' ? 'MLT-3 Electrical Signals' : 'PAM-5 Electrical Signals');
+    const wires = dom.cableArea.querySelectorAll('.wire-pair');
+    if(wires) {
+        // Conductor activity by speed: 100BASE-TX uses pins 1,2 and 3,6 (four conductors), 10BASE-T same; 1000BASE-T uses all eight
+        let activePins = [1,2,3,6];
+        if (state.scenario === 'direct_1000baseT') activePins = [1,2,3,4,5,6,7,8];
+        const conductorEls = dom.cableArea.querySelectorAll('.wire-conductor');
+        conductorEls.forEach(el => {
+            const pin = parseInt(el.getAttribute('data-pin'), 10);
+            el.classList.toggle('inactive', !activePins.includes(pin));
+        });
+    }
+
+
+    const currentScript = scenarioLibrary[state.scenario];
+    const scene = currentScript[state.scene];
+    const totalSteps = scene ? scene.length : 0;
+    dom.progress.style.width = totalSteps > 0 ? `${(state.step / totalSteps) * 100}%` : '0%';
+    const sceneNames = ['Disconnected', 'Connected (no IP)', 'Manual IPs set', 'Ping in action', 'Fiber Link Up'];
+    set(dom.stateLabel, `State: ${sceneNames[state.scene]}`);
+    set(dom.speedVal, `${state.speedFactor.toFixed(2)}x`);
+    // Reflect capability dropdowns with current state
+    const map = [
+        ['nicA_caps','nicA'],['mcA_copper_caps','mcA_copper'],['mcA_sfp_caps','mcA_sfp'],['sfpA_caps','sfpA'],
+        ['nicB_caps','nicB'],['mcB_copper_caps','mcB_copper'],['mcB_sfp_caps','mcB_sfp'],['sfpB_caps','sfpB']
+    ];
+    map.forEach(([id,key]) => { const el = document.getElementById(id); if (el && el.value !== state.caps[key]) el.value = state.caps[key]; });
+    let ha = dom.hosts.A;
+    set(ha.phy_link, state.hostA.link ? 'UP' : 'DOWN'); set(ha.phy_neg, state.hostA.neg);
+    set(ha.phy_speed, state.hostA.speed || '—'); set(ha.ip_addr, state.hostA.ip || '(none)');
+    set(ha.ip_subnet, state.hostA.subnet || '(none)');
+    set(ha.ip_route, state.hostA.ip ? '192.168.1.0/24 on-link' : '(no route)');
+    set(ha.ip_arp, Object.keys(state.hostA.arp).length ? JSON.stringify(state.hostA.arp).replace(/"/g, '') : '(empty)');
+    set(ha.ip_fw, state.fwBlock ? 'BLOCKED' : 'ALLOW');
+    let hb = dom.hosts.B;
+    set(hb.phy_link, state.hostB.link ? 'UP' : 'DOWN'); set(hb.phy_neg, state.hostB.neg);
+    set(hb.phy_speed, state.hostB.speed || '—'); set(hb.ip_addr, state.hostB.ip || '(none)');
+    set(hb.ip_subnet, state.hostB.subnet || '(none)');
+    set(hb.ip_route, state.hostB.ip ? '192.168.1.0/24 on-link' : '(no route)');
+    set(hb.ip_arp, Object.keys(state.hostB.arp).length ? JSON.stringify(state.hostB.arp).replace(/"/g, '') : '(empty)');
+    if (state.scene < 3 && !state.scenario.startsWith('fiber')) { set(dom.hosts.A.app_proc, 'idle'); set(dom.hosts.A.app_action, '—'); set(dom.hosts.B.app_proc, 'idle'); }
+    dom.playBtn.disabled = state.playing; dom.pauseBtn.disabled = !state.playing;
+    dom.prevBtn.disabled = state.playing || (state.scene === 0 && state.step === 0);
+    const lastScene = currentScript.length - 1;
+    dom.nextBtn.disabled = state.playing || (state.scene === lastScene && state.step >= currentScript[lastScene].length);
+}
+
+function logToScreen(logItem) {
+    if (!logItem) return;
+    const time = new Date().toLocaleTimeString();
+    let entryHtml = `<span class="text-gray-400">[${time}]</span> ${logItem.title}`;
+    if (logItem.subSteps && logItem.subSteps.length > 0) {
+        const subStepsHtml = logItem.subSteps.map(s => {
+            try {
+                const v = (typeof s === 'function') ? s() : s;
+                return `<li>${v}</li>`;
+            } catch(e) {
+                return `<li>${String(s)}</li>`;
+            }
+        }).join('');
+        entryHtml = `<details open><summary>${entryHtml}</summary><ul>${subStepsHtml}</ul></details>`;
+    }
+    const logEntry = document.createElement('div');
+    if(logItem.type === 'bad') logEntry.style.color = 'var(--bad)';
+    if(logItem.type === 'good') logEntry.style.color = 'var(--good)';
+    logEntry.innerHTML = entryHtml;
+    dom.log.appendChild(logEntry);
+    dom.log.scrollTop = dom.log.scrollHeight;
+}
+
+function sleep(t) { return new Promise(r => setTimeout(r, t / state.speedFactor)); }
+
+function clearHighlightsAndDetails() {
+    [dom.hosts.A, dom.hosts.B].forEach(host => {
+        Object.values(host).forEach(el => {
+            if (el.classList && typeof el.classList.remove === 'function') el.classList.remove('active');
+            if (el.classList && el.classList.contains('interface')) setDetail(el, "");
+        });
+    });
+}
+
+async function runStep() {
+    const currentScript = scenarioLibrary[state.scenario];
+    if (!currentScript[state.scene] || !currentScript[state.scene][state.step]) { state.playing = false; return; }
+    
+    clearHighlightsAndDetails();
+    
+    const currentStep = currentScript[state.scene][state.step];
+    logToScreen(currentStep.log);
+    
+    if (currentStep.highlights) {
+        currentStep.highlights.forEach(h => {
+            const [host, elKey] = h.split('.');
+            const el = dom.hosts[host][elKey];
+            if (el) active(el, true);
+        });
+    }
+
+    if (currentStep.action) await currentStep.action();
+    
+    state.step++;
+    if (state.step >= currentScript[state.scene].length) {
+        if (state.scene < currentScript.length - 1) { state.scene++; state.step = 0; } else { state.playing = false; }
+    }
+    render();
+}
+
+async function play() {
+    if (state.playing) return;
+    state.playing = true; render();
+    while(state.playing) { await runStep(); await sleep(1200); }
+    render();
+}
+function pause() { state.playing = false; render(); }
+async function next() { if(!state.playing) await runStep(); }
+function prev() {
+    const currentScript = scenarioLibrary[state.scenario];
+    if(state.playing) return;
+    clearHighlightsAndDetails();
+    if (state.step > 0) { state.step--; } 
+    else if (state.scene > 0) { state.scene--; state.step = currentScript[state.scene].length - 1; }
+    
+    const targetScene = state.scene, targetStep = state.step;
+    reset(false); // Soft reset - this clears state but NOT the log
+    
+    // Clear and rebuild the log to match the target position
+    dom.log.innerHTML = '';
+    
+    // Replay all steps up to target position, including both actions AND log entries
+    for (let s = 0; s <= targetScene; s++) {
+        for (let i = 0; i < (s === targetScene ? targetStep : currentScript[s].length); i++) {
+            state.scene = s; state.step = i;
+            const currentStepData = currentScript[s][i];
+            
+            // Add the log entry for this step
+            logToScreen(currentStepData.log);
+            
+            // Execute the action (but skip animations for performance)
+            const stepAction = currentStepData.action;
+            if (stepAction && stepAction.toString().indexOf('spawnAnimation') === -1 && stepAction.toString().indexOf('animateVoltages') === -1) {
+                stepAction();
+            }
+        }
+    }
+    
+    // Set final position
+     state.scene = targetScene;
+     state.step = targetStep;
+     
+    // Apply current step highlighting
+    const currentStep = currentScript[state.scene][state.step];
+    if (currentStep && currentStep.highlights) {
+        currentStep.highlights.forEach(h => {
+            const [host, elKey] = h.split('.');
+            const el = dom.hosts[host][elKey];
+            if (el) active(el, true);
+        });
+    }
+    render();
+}
+function reset(full = true) { 
+    state = initialState(); 
+    state.scenario = dom.scenarioSelect.value;
+    if(full) dom.log.innerHTML = ''; 
+    render(); 
+}
+
+dom.playBtn.onclick = play; dom.pauseBtn.onclick = pause; dom.nextBtn.onclick = next;
+dom.prevBtn.onclick = prev; dom.resetBtn.onclick = () => reset(true);
+dom.speedSlider.addEventListener('input', e => { state.speedFactor = parseFloat(e.target.value); render(); });
+dom.toggleFirewall.addEventListener('change', e => { state.fwBlock = e.target.checked; render(); });
+dom.scenarioSelect.addEventListener('change', (e) => {
+    state.scenario = e.target.value;
+    reset(true);
+});
+// Capability selectors → state.caps
+['nicA_caps','mcA_copper_caps','mcA_sfp_caps','sfpA_caps','nicB_caps','mcB_copper_caps','mcB_sfp_caps','sfpB_caps']
+    .forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('change', (e) => {
+            const map = {
+                nicA_caps:'nicA', mcA_copper_caps:'mcA_copper', mcA_sfp_caps:'mcA_sfp', sfpA_caps:'sfpA',
+                nicB_caps:'nicB', mcB_copper_caps:'mcB_copper', mcB_sfp_caps:'mcB_sfp', sfpB_caps:'sfpB'
+            };
+            const key = map[id];
+            state.caps[key] = e.target.value;
+            render();
+        });
+});
+reset();
+</script>
+</body>
+</html>
+
