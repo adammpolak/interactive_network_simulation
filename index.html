@@ -152,8 +152,11 @@
         @media (max-width: 768px) {
             .controls { position: sticky; top: 0; z-index: 20; }
             .btns { flex-wrap: wrap; }
-            .cable-wrap { min-width: 640px; } /* allow horizontal scroll for detailed cables */
-            .cable { overflow-x: auto; }
+            .connection-container { overflow: hidden; }
+            .cable-wrap { width: 100%; min-width: 0; overflow: hidden; }
+            .cable { width: 100%; overflow: hidden; }
+            .fiber-view { flex-wrap: wrap; gap: 8px; }
+            .copper-run { min-width: 60px; }
             #simulation-log { height: 16rem; font-size: 13px; }
             .host .kvs { font-size: 11px; }
             .layer h3 { font-size: 12px; }
